@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@anthropic-ai/claude-code",
     "imapflow",
+    "ws",
   ],
 };
 

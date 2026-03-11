@@ -1,10 +1,18 @@
-import { PrismaClient } from "@prisma/client";
+import { Pool, neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { neon } from "@neondatabase/serverless";
+import { PrismaClient } from "@prisma/client";
+import ws from "ws";
 
-const sql = neon(process.env.DATABASE_URL!);
+neonConfig.webSocketConstructor = ws;
+
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
+
+const pool = new Pool({ connectionString });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const adapter = new PrismaNeon(sql as any);
+const adapter = new PrismaNeon(pool as any);
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
