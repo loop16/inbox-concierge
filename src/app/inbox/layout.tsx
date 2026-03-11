@@ -39,9 +39,19 @@ export default function InboxLayout({
     setTimeout(() => setToast(null), 5000);
   };
 
+  const [hasAutoSynced, setHasAutoSynced] = useState(false);
+
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
   }, [status, router]);
+
+  // Auto-sync on first load after sign-in
+  useEffect(() => {
+    if (status === "authenticated" && !hasAutoSynced && !syncLoading) {
+      setHasAutoSynced(true);
+      handleSync();
+    }
+  }, [status, hasAutoSynced, syncLoading]);
 
   const handleSync = async () => {
     setSyncLoading(true);
