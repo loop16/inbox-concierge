@@ -95,12 +95,12 @@ export default function NewBucketModal() {
 
           <div>
             <label className="block text-sm font-medium text-stone-700 mb-1">
-              Description
+              Description <span className="text-stone-400 font-normal">(tells AI what goes here)</span>
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What kind of emails belong here?"
+              placeholder="e.g., Emails related to school — assignments, professors, university announcements"
               rows={2}
               className="w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none bg-white"
             />
@@ -108,12 +108,12 @@ export default function NewBucketModal() {
 
           <div>
             <label className="block text-sm font-medium text-stone-700 mb-1">
-              Examples
+              Examples <span className="text-stone-400 font-normal">(senders, subjects, keywords)</span>
             </label>
             <textarea
               value={examples}
               onChange={(e) => setExamples(e.target.value)}
-              placeholder="e.g., emails from bloomberg.com, subjects about market data"
+              placeholder="e.g., emails from @university.edu, Canvas notifications, grade reports"
               rows={2}
               className="w-full px-3 py-2.5 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none bg-white"
             />
