@@ -76,9 +76,21 @@ Respond with JSON only. No markdown. No backticks. Format:
     const text = response.choices[0]?.message?.content || "";
     let cleaned = text.trim();
     cleaned = cleaned.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
-    // Fix bad escape characters the LLM sometimes produces
-    cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
-    const suggestions = JSON.parse(cleaned);
+
+    let suggestions;
+    try {
+      suggestions = JSON.parse(cleaned);
+    } catch {
+      // Fix bad escape characters the LLM sometimes produces
+      cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+      try {
+        suggestions = JSON.parse(cleaned);
+      } catch {
+        // Last resort: strip all backslashes that aren't part of valid JSON escapes
+        cleaned = cleaned.replace(/\\/g, "");
+        suggestions = JSON.parse(cleaned);
+      }
+    }
 
     return NextResponse.json({ suggestions });
   } catch (err) {

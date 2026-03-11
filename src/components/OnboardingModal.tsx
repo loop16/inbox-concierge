@@ -2,7 +2,7 @@
 
 import { useAppStore } from "@/lib/store";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface SuggestedBucket {
   name: string;
@@ -105,12 +105,19 @@ export default function OnboardingModal() {
     );
   };
 
-  if (!onboardingOpen) return null;
+  // Auto-start fetching when modal opens
+  const hasFetched = useRef(false);
+  useEffect(() => {
+    if (onboardingOpen && step === "loading" && suggestions.length === 0 && !error && !hasFetched.current) {
+      hasFetched.current = true;
+      fetchSuggestions();
+    }
+    if (!onboardingOpen) {
+      hasFetched.current = false;
+    }
+  }, [onboardingOpen, step, suggestions.length, error]);
 
-  // Auto-start fetching
-  if (step === "loading" && suggestions.length === 0 && !error) {
-    fetchSuggestions();
-  }
+  if (!onboardingOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center">
