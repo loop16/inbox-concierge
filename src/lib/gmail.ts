@@ -26,6 +26,7 @@ export interface ParsedThread {
   snippet: string;
   date: Date;
   labelIds: string[];
+  hasUnsubscribe: boolean;
 }
 
 export async function fetchThreadList(
@@ -50,7 +51,7 @@ export async function fetchThreadDetail(
   threadId: string
 ): Promise<ParsedThread> {
   const res = await fetch(
-    `${GMAIL_BASE}/threads/${threadId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+    `${GMAIL_BASE}/threads/${threadId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=List-Unsubscribe`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -68,6 +69,7 @@ function parseThread(thread: GmailThread): ParsedThread {
 
   const subjectHeader = headers.find((h) => h.name.toLowerCase() === "subject");
   const fromHeader = headers.find((h) => h.name.toLowerCase() === "from");
+  const unsubHeader = headers.find((h) => h.name.toLowerCase() === "list-unsubscribe");
 
   const subject = subjectHeader?.value || "(no subject)";
   const { name: sender, email: senderEmail } = parseFromHeader(
@@ -88,6 +90,7 @@ function parseThread(thread: GmailThread): ParsedThread {
     snippet: thread.snippet || firstMessage?.snippet || "",
     date: internalDate,
     labelIds,
+    hasUnsubscribe: !!unsubHeader?.value,
   };
 }
 

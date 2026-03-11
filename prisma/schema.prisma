@@ -39,6 +39,7 @@ model Thread {
   aiUrgency       String?
   aiRisk          String?
   aiSenderType    String?
+  hasUnsubscribe  Boolean   @default(false)
   provider        String    @default("gmail")
   providerLabel   String    @default("Gmail")
   userId          String

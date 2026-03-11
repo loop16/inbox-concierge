@@ -127,6 +127,9 @@ export default function InboxLayout({
               setClassifyProgress(`${evt.processed} / ${evt.total} — ${evt.message}`);
             } else if (evt.phase === "llm-progress") {
               setClassifyProgress(`${evt.processed} / ${evt.total} — AI ${evt.batchesCompleted}/${evt.totalBatches}`);
+              // Progressive refresh — update sidebar counts as batches complete
+              queryClient.invalidateQueries({ queryKey: ["threads"] });
+              queryClient.invalidateQueries({ queryKey: ["buckets"] });
             } else if (evt.phase === "fallback") {
               setClassifyProgress("No AI provider");
             } else if (evt.phase === "complete") {

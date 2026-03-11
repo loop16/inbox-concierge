@@ -119,17 +119,18 @@ export async function POST(request: NextRequest) {
         // ── Stats ──
         let skippedManualOverrides = 0;
         let senderRuleCount = 0;
+        let rulesSuggested = 0;
         let llmBased = 0;
         let failed = 0;
         let processed = 0;
         let aiAvailable = true;
         let aiError: string | null = null;
 
-        const forAI: typeof threads = [];
+        const forAI: { thread: typeof threads[0]; ruleSuggestion: string | null }[] = [];
         const senderRuleUpdates: { id: string; bucketId: string; confidence: number; reason: string }[] = [];
         const ruleMatchIncrements = new Map<string, number>();
 
-        // ── Only apply user-defined sender rules (these are explicit user choices) ──
+        // ── Phase 1: Sender rules are permanent, everything else gets rule hints for AI ──
         for (const thread of threads) {
           if (thread.manualOverride) {
             skippedManualOverrides++;
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Check sender rules only (exact email or domain match)
+          // Sender rules — permanent, not overridden by AI
           const emailRule = senderRuleMap.get(thread.senderEmail);
           const domain = thread.senderEmail.split("@")[1]?.toLowerCase() || "";
           const domainRule = !emailRule ? domainRuleMap.get(domain) : undefined;
@@ -159,8 +160,16 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Everything else goes to AI
-          forAI.push(thread);
+          // Run auto-rules to get a suggestion (hint for AI)
+          const ruleThread: RuleThread = {
+            id: thread.id, subject: thread.subject, sender: thread.sender,
+            senderEmail: thread.senderEmail, snippet: thread.snippet, labelIds: thread.labelIds,
+          };
+          const match = applyAllRules(ruleThread, ruleBuckets, senderRules, senderRuleMap, domainRuleMap);
+          if (match) {
+            rulesSuggested++;
+          }
+          forAI.push({ thread, ruleSuggestion: match ? match.bucketName : null });
         }
 
         send({
@@ -169,6 +178,7 @@ export async function POST(request: NextRequest) {
           total: threads.length,
           rulesCaught: senderRuleCount,
           senderRules: senderRuleCount,
+          rulesSuggested,
           autoDetect: 0, keywords: 0, customMatch: 0, labels: 0,
           skipped: skippedManualOverrides,
           needsLLM: forAI.length,
@@ -203,10 +213,12 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // ── LLM classification — AI handles everything except sender rules ──
+        // ── Phase 2: AI classification with rule hints ──
         const client = getLLMClient();
         const model = getLLMModel();
-        const needsLLM = forAI;
+        // Build threads for AI, including rule suggestions as hints
+        const needsLLM = forAI.map((item) => item.thread);
+        const ruleHints = new Map(forAI.filter((item) => item.ruleSuggestion).map((item) => [item.thread.id, item.ruleSuggestion!]));
 
         if (client && needsLLM.length > 0) {
           const bucketDefs: BucketDef[] = buckets.map((b) => ({
@@ -251,11 +263,12 @@ export async function POST(request: NextRequest) {
                   sender: t.sender,
                   senderEmail: t.senderEmail,
                   snippet: t.snippet,
+                  hasUnsubscribe: t.hasUnsubscribe,
                 }));
 
                 let classifications: DimensionalClassification[] = [];
                 try {
-                  classifications = await classifyWithLLM(client, model, summaries, bucketDefs);
+                  classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
                 } catch (e) {
                   const msg = (e as Error).message || "";
 
@@ -274,7 +287,7 @@ export async function POST(request: NextRequest) {
                   // Transient error — retry once
                   console.warn(`LLM batch ${batchNum} failed, retrying:`, msg);
                   try {
-                    classifications = await classifyWithLLM(client, model, summaries, bucketDefs);
+                    classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
                   } catch {
                     return { batchNum, failed: batch.length, classified: 0, updates: [] as { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string }[] };
                   }

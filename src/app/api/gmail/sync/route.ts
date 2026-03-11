@@ -58,6 +58,7 @@ export async function POST() {
             snippet: thread.snippet,
             date: thread.date,
             labelIds: JSON.stringify(thread.labelIds),
+            hasUnsubscribe: thread.hasUnsubscribe,
           },
           create: {
             gmailThreadId: thread.gmailThreadId,
@@ -67,6 +68,7 @@ export async function POST() {
             snippet: thread.snippet,
             date: thread.date,
             labelIds: JSON.stringify(thread.labelIds),
+            hasUnsubscribe: thread.hasUnsubscribe,
             userId: auth.user.id,
             provider: "gmail",
             providerLabel: "Gmail",

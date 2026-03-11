@@ -74,9 +74,34 @@ export default function OnboardingModal() {
         });
       }
 
-      // Classify
+      // Classify — consume the stream so we wait for actual completion
       setApplyStatus("Classifying your emails with AI...");
-      await fetch("/api/classify", { method: "POST" });
+      const classifyRes = await fetch("/api/classify", { method: "POST" });
+      if (classifyRes.body) {
+        const reader = classifyRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const evt = JSON.parse(line);
+              if (evt.phase === "llm-progress") {
+                setApplyStatus(`Classifying... ${evt.processed}/${evt.total}`);
+                queryClient.invalidateQueries({ queryKey: ["buckets"] });
+                queryClient.invalidateQueries({ queryKey: ["threads"] });
+              } else if (evt.phase === "rules") {
+                setApplyStatus(`Rules matched ${evt.rulesCaught}, ${evt.needsLLM} need AI...`);
+              }
+            } catch { /* ignore malformed */ }
+          }
+        }
+      }
 
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });

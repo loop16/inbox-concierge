@@ -6,6 +6,7 @@ export interface ThreadSummary {
   sender: string;
   senderEmail: string;
   snippet: string;
+  hasUnsubscribe?: boolean;
 }
 
 export interface BucketDef {
@@ -44,13 +45,25 @@ export async function classifyWithLLM(
   model: string,
   threads: ThreadSummary[],
   buckets: BucketDef[],
+  ruleHints?: Map<string, string>,
 ): Promise<DimensionalClassification[]> {
-  const trimmedThreads = threads.map((t) => ({
-    id: t.id,
-    subject: t.subject.slice(0, 120),
-    from: `${t.sender} <${t.senderEmail}>`,
-    preview: t.snippet.slice(0, 200),
-  }));
+  const trimmedThreads = threads.map((t) => {
+    const entry: Record<string, string | boolean> = {
+      id: t.id,
+      subject: t.subject.slice(0, 120),
+      from: `${t.sender} <${t.senderEmail}>`,
+      preview: t.snippet.slice(0, 200),
+    };
+    if (t.hasUnsubscribe) {
+      entry.hasUnsubscribe = true;
+    }
+    // Include rule suggestion as a hint for AI to confirm or override
+    const hint = ruleHints?.get(t.id);
+    if (hint) {
+      entry.suggested = hint;
+    }
+    return entry;
+  });
 
   const bucketList = buckets.map((b) => {
     let desc = `- "${b.name}"`;
@@ -68,9 +81,11 @@ INSTRUCTIONS:
 - Read each email's subject, sender, and preview carefully
 - Match each email to the bucket whose description and examples best fit the email's content
 - The bucket descriptions are the rules — if a bucket says "school related emails" then school emails go there
+- Some emails have a "suggested" field — this is a quick rule-based guess. Confirm it if correct, or override it with the right bucket
+- Emails with "hasUnsubscribe": true have an unsubscribe header — this is a strong signal for newsletters, marketing, or auto-archive buckets
 - Use the bucket name EXACTLY as written (case-sensitive)
 - If an email doesn't clearly fit any specific bucket, put it in the most general/catch-all bucket
-- Do NOT force emails into specific buckets — only classify there if the content genuinely matches the bucket's description
+- Do NOT force emails into wrong buckets — accuracy matters more than specificity
 - confidence: 0.0-1.0 (how well the email matches the bucket's description)
 - reason: brief explanation (10 words max)
 
@@ -100,7 +115,6 @@ Respond with a JSON array ONLY. No markdown, no backticks:
 
   return parsed
     .map((r) => {
-      // Resolve case-insensitive bucket name
       const exactName = bucketNames.has(r.bucket) ? r.bucket : bucketNamesLower.get(r.bucket.toLowerCase());
       if (!exactName) return null;
 
@@ -126,7 +140,6 @@ function parseResponse(raw: string): LLMClassificationResult[] {
   try {
     return JSON.parse(cleaned);
   } catch {
-    // Fix bad escapes
     cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
     try {
       return JSON.parse(cleaned);
