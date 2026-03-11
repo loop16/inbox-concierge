@@ -1,12 +1,12 @@
-console.log("[PRISMA DEBUG] DATABASE_URL exists:", !!process.env.DATABASE_URL);
-console.log("[PRISMA DEBUG] DATABASE_URL starts with:", process.env.DATABASE_URL?.slice(0, 30));
-
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
-import ws from "ws";
 
-neonConfig.webSocketConstructor = ws;
+// Use ws for Node.js, native WebSocket for Vercel/Edge
+if (typeof globalThis.WebSocket === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  neonConfig.webSocketConstructor = require("ws");
+}
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
