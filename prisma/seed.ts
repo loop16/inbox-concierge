@@ -1,10 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { neon } from "@neondatabase/serverless";
-import { config } from "dotenv";
-
-config({ path: ".env.local" });
-config({ path: ".env" });
 
 const sql = neon(process.env.DATABASE_URL!);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
