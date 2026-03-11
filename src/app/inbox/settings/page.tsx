@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { useAppStore } from "@/lib/store";
 
 /* ───── types ───── */
 
@@ -53,6 +54,7 @@ const PRESETS: Preset[] = [
 export default function SettingsPage() {
   const { data: session } = useSession();
   const queryClient = useQueryClient();
+  const { setOnboardingOpen } = useAppStore();
 
   /* ── IMAP accounts state ── */
   const { data: imapAccounts = [] } = useQuery<ImapAccount[]>({
@@ -340,6 +342,23 @@ export default function SettingsPage() {
             )}
           </div>
         )}
+      </section>
+
+      {/* ═══ AI BUCKET SETUP ═══ */}
+      <section>
+        <h2 className="text-2xl font-bold text-stone-900 mb-1">AI Bucket Setup</h2>
+        <p className="text-sm text-stone-500 mb-4">
+          Let AI analyze your emails and suggest personalized buckets. This replaces your current buckets.
+        </p>
+        <button
+          onClick={() => setOnboardingOpen(true)}
+          className="px-5 py-3 text-sm font-medium bg-amber-600 text-white rounded-xl hover:bg-amber-700 cursor-pointer transition-colors inline-flex items-center gap-2"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          Suggest Buckets with AI
+        </button>
       </section>
 
       {/* ═══ LEARNED RULES ═══ */}
