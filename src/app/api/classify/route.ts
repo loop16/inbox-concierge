@@ -16,6 +16,9 @@ import {
 } from "@/lib/classify-llm";
 import { rateLimit } from "@/lib/rate-limit";
 
+// Allow up to 300 seconds for classification on Vercel
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   const auth = await getAuthSession();
   if (!auth) {

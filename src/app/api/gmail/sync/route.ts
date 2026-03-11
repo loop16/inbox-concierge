@@ -6,6 +6,9 @@ import { decrypt } from "@/lib/crypto";
 import { fetchImapMessages } from "@/lib/imap-service";
 import { rateLimit } from "@/lib/rate-limit";
 
+// Allow up to 60 seconds for sync on Vercel
+export const maxDuration = 60;
+
 export async function POST() {
   const auth = await getAuthSession();
   if (!auth || !auth.accessToken) {
@@ -73,9 +76,10 @@ export async function POST() {
       }
     }
   } catch (error) {
+    console.error("[SYNC] Gmail sync error:", error);
     if (error instanceof GmailError) {
       if (error.status === 401) {
-        return NextResponse.json({ error: "Gmail token expired" }, { status: 401 });
+        return NextResponse.json({ error: "Gmail token expired. Please sign out and sign in again." }, { status: 401 });
       }
       if (error.status === 429) {
         return NextResponse.json({ error: "Rate limited" }, { status: 429 });
