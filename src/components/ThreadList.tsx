@@ -70,6 +70,7 @@ export default function ThreadList() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hiddenSources, setHiddenSources] = useState<Set<string>>(new Set());
   const [dropdownThreadId, setDropdownThreadId] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<Record<string, { summary: string; action: string | null; loading?: boolean }>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
   const wasDragging = useRef(false);
 
@@ -202,6 +203,21 @@ export default function ThreadList() {
     }
     return result;
   }, [threads, searchQuery, hiddenSources]);
+
+  const handleSummarize = useCallback(async (threadId: string) => {
+    setSummaries((prev) => ({ ...prev, [threadId]: { summary: "", action: null, loading: true } }));
+    try {
+      const res = await fetch(`/api/threads/${threadId}/summarize`, { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setSummaries((prev) => ({ ...prev, [threadId]: { summary: data.summary, action: data.action } }));
+      } else {
+        setSummaries((prev) => ({ ...prev, [threadId]: { summary: data.error || "Failed to summarize", action: null } }));
+      }
+    } catch {
+      setSummaries((prev) => ({ ...prev, [threadId]: { summary: "Failed to summarize", action: null } }));
+    }
+  }, []);
 
   const toggleSource = (provider: string) => {
     setHiddenSources((prev) => {
@@ -470,6 +486,39 @@ export default function ThreadList() {
                           </span>
                         </div>
                       </div>
+                    )}
+
+                    {/* AI Summary */}
+                    {summaries[thread.id] ? (
+                      summaries[thread.id].loading ? (
+                        <div className="mt-2 bg-amber-50 rounded-lg px-3 py-2.5 text-xs text-amber-700 border border-amber-200 flex items-center gap-2">
+                          <svg className="w-3.5 h-3.5 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          Summarizing...
+                        </div>
+                      ) : (
+                        <div className="mt-2 bg-amber-50 rounded-lg px-3 py-2.5 text-xs border border-amber-200 space-y-1">
+                          <p className="text-stone-700">{summaries[thread.id].summary}</p>
+                          {summaries[thread.id].action && (
+                            <p className="text-amber-700 font-medium">Action: {summaries[thread.id].action}</p>
+                          )}
+                        </div>
+                      )
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSummarize(thread.id);
+                        }}
+                        className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        AI Summary
+                      </button>
                     )}
                   </div>
                 )}
