@@ -76,6 +76,8 @@ Respond with JSON only. No markdown. No backticks. Format:
     const text = response.choices[0]?.message?.content || "";
     let cleaned = text.trim();
     cleaned = cleaned.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
+    // Fix bad escape characters the LLM sometimes produces
+    cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
     const suggestions = JSON.parse(cleaned);
 
     return NextResponse.json({ suggestions });

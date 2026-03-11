@@ -1,11 +1,14 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { neon } from "@neondatabase/serverless";
 import { config } from "dotenv";
 
 config({ path: ".env.local" });
 config({ path: ".env" });
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const sql = neon(process.env.DATABASE_URL!);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const adapter = new PrismaNeon(sql as any);
 const prisma = new PrismaClient({ adapter });
 
 const DEFAULT_BUCKETS = [
