@@ -32,38 +32,43 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account }) {
       if (!user.email || !account) return false;
 
-      const dbUser = await prisma.user.upsert({
-        where: { email: user.email },
-        update: {
-          name: user.name,
-          accessToken: account.access_token,
-          refreshToken: account.refresh_token,
-          lastActiveAt: new Date(),
-        },
-        create: {
-          email: user.email,
-          name: user.name,
-          accessToken: account.access_token,
-          refreshToken: account.refresh_token,
-          lastActiveAt: new Date(),
-        },
-      });
-
-      // Seed default buckets for new users
-      const bucketCount = await prisma.bucket.count({
-        where: { userId: dbUser.id },
-      });
-      if (bucketCount === 0) {
-        await prisma.bucket.createMany({
-          data: DEFAULT_BUCKETS.map((b) => ({
-            ...b,
-            isDefault: true,
-            userId: dbUser.id,
-          })),
+      try {
+        const dbUser = await prisma.user.upsert({
+          where: { email: user.email },
+          update: {
+            name: user.name,
+            accessToken: account.access_token,
+            refreshToken: account.refresh_token,
+            lastActiveAt: new Date(),
+          },
+          create: {
+            email: user.email,
+            name: user.name,
+            accessToken: account.access_token,
+            refreshToken: account.refresh_token,
+            lastActiveAt: new Date(),
+          },
         });
-      }
 
-      return true;
+        // Seed default buckets for new users
+        const bucketCount = await prisma.bucket.count({
+          where: { userId: dbUser.id },
+        });
+        if (bucketCount === 0) {
+          await prisma.bucket.createMany({
+            data: DEFAULT_BUCKETS.map((b) => ({
+              ...b,
+              isDefault: true,
+              userId: dbUser.id,
+            })),
+          });
+        }
+
+        return true;
+      } catch (error) {
+        console.error("[AUTH] signIn callback failed:", error);
+        return false;
+      }
     },
 
     async jwt({ token, account }) {
