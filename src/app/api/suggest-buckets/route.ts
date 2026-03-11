@@ -47,10 +47,13 @@ Based on the actual content and patterns you see, suggest 5-9 buckets that would
 Guidelines:
 - Look for patterns: recurring senders, topics, types of communication
 - Name buckets clearly and concisely (2-4 words)
-- Always include an "Action Required" bucket for urgent/time-sensitive items
+- Always include an "Action Required" bucket first for urgent/time-sensitive items
+- Always include an "Important" bucket for emails that need attention but aren't urgent
+- Always include a "Newsletters" bucket for marketing, promotions, and bulk emails
 - Always include a catch-all bucket (like "Other" or "Low Priority") as the last one
 - Each bucket should have a clear description and 2-3 example senders/subjects from the actual emails
 - Be specific: "GitHub Notifications" is better than "Tech", "Subscription Receipts" is better than "Finance"
+- Do NOT create overlapping buckets — each email should clearly belong to one bucket
 
 Respond with JSON only. No markdown. No backticks. Format:
 [

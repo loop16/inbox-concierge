@@ -55,7 +55,9 @@ export function applyAllRules(
   const auto = matchAutomatedEmail(thread, bucketByName);
   if (auto) return auto;
 
-  // Layer 3: Gmail labels — skipped, let AI classify instead
+  // Layer 3: Gmail label rules (only high-confidence ones)
+  const label = matchGmailLabels(thread, bucketByName);
+  if (label) return label;
 
   // Layer 4: Keyword rules on subject
   const kw = matchKeywordRules(thread, bucketByName);
@@ -224,24 +226,10 @@ function matchGmailLabels(
     return null;
   }
 
+  // Only promotions — high confidence signal from Gmail
   if (labels.includes("CATEGORY_PROMOTIONS")) {
-    const bucket = findBucket(bucketByName, "Newsletters", "Newsletter");
+    const bucket = findBucket(bucketByName, "Newsletters", "Newsletter", "Promotions");
     if (bucket) return result(bucket, "Gmail promotions category", 0.85, "label");
-  }
-
-  if (labels.includes("CATEGORY_SOCIAL")) {
-    const bucket = findBucket(bucketByName, "Auto-Archive", "Archive", "Personal");
-    if (bucket) return result(bucket, "Gmail social category", 0.8, "label");
-  }
-
-  if (labels.includes("CATEGORY_UPDATES")) {
-    const bucket = findBucket(bucketByName, "Can Wait");
-    if (bucket) return result(bucket, "Gmail updates category", 0.75, "label");
-  }
-
-  if (labels.includes("CATEGORY_FORUMS")) {
-    const bucket = findBucket(bucketByName, "Auto-Archive", "Archive");
-    if (bucket) return result(bucket, "Gmail forums category", 0.8, "label");
   }
 
   return null;

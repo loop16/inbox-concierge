@@ -15,16 +15,6 @@ export interface BucketDef {
   isDefault?: boolean;
 }
 
-export interface DimensionalResult {
-  threadId: string;
-  category: string;
-  actionability: string;
-  urgency: string;
-  risk: string;
-  sender_type: string;
-  reason: string;
-}
-
 export interface DimensionalClassification {
   threadId: string;
   bucket: string;
@@ -61,93 +51,7 @@ const PROTECTED_SENDER_PATTERNS = [
   /security|auth0|okta|duo|lastpass|1password/i,
 ];
 
-// ── Map dimensions → bucket ──
-
-function mapDimensionsToBucket(
-  d: DimensionalResult,
-  buckets: BucketDef[],
-): { bucket: string; confidence: number; reason: string } {
-  const has = (name: string) => buckets.some((b) => b.name.toLowerCase() === name.toLowerCase());
-
-  // High risk → Action Required
-  if (d.risk === "high") {
-    const target = has("Action Required") ? "Action Required" : "Important";
-    return { bucket: target, confidence: 0.95, reason: `High risk: ${d.reason}` };
-  }
-
-  // High actionability → Action Required
-  if (d.actionability === "high") {
-    const target = has("Action Required") ? "Action Required" : "Important";
-    return { bucket: target, confidence: 0.9, reason: `Action needed: ${d.reason}` };
-  }
-
-  // Newsletters / bulk
-  if (d.sender_type === "bulk" || d.category === "newsletter") {
-    if (has("Newsletters")) return { bucket: "Newsletters", confidence: 0.9, reason: `Bulk/newsletter: ${d.reason}` };
-  }
-
-  // Finance
-  if (d.category === "finance" || d.category === "commerce") {
-    if (has("Finance / Receipts")) return { bucket: "Finance / Receipts", confidence: 0.85, reason: `Financial: ${d.reason}` };
-  }
-
-  // Travel
-  if (d.category === "travel") {
-    if (has("Travel")) return { bucket: "Travel", confidence: 0.85, reason: `Travel: ${d.reason}` };
-    if (has("Can Wait")) return { bucket: "Can Wait", confidence: 0.75, reason: `Travel: ${d.reason}` };
-  }
-
-  // Recruiting
-  if (d.category === "recruiting") {
-    if (has("Recruiting / Job")) return { bucket: "Recruiting / Job", confidence: 0.85, reason: `Recruiting: ${d.reason}` };
-  }
-
-  // Social media
-  if (d.category === "social") {
-    if (has("Auto-Archive")) return { bucket: "Auto-Archive", confidence: 0.8, reason: `Social: ${d.reason}` };
-  }
-
-  // Personal from real people with urgency → Important
-  if (d.sender_type === "person" && (d.urgency === "high" || d.urgency === "medium")) {
-    if (has("Important")) return { bucket: "Important", confidence: 0.85, reason: `Personal, ${d.urgency} urgency: ${d.reason}` };
-  }
-
-  // Personal from real people → Personal
-  if (d.sender_type === "person") {
-    if (has("Personal")) return { bucket: "Personal", confidence: 0.8, reason: `Personal: ${d.reason}` };
-  }
-
-  // Service, no action, low urgency → Auto-Archive
-  if (d.sender_type === "service" && d.actionability === "none" && d.urgency === "low") {
-    if (has("Auto-Archive")) return { bucket: "Auto-Archive", confidence: 0.8, reason: `Low-priority notification: ${d.reason}` };
-  }
-
-  // Service → Can Wait
-  if (d.sender_type === "service") {
-    if (has("Can Wait")) return { bucket: "Can Wait", confidence: 0.75, reason: `Service notification: ${d.reason}` };
-  }
-
-  // Custom bucket matching
-  for (const bucket of buckets) {
-    if (!bucket.isDefault && bucket.description) {
-      const desc = bucket.description.toLowerCase();
-      const reason = d.reason.toLowerCase();
-      const cat = d.category.toLowerCase();
-      if (desc.includes(cat) || reason.split(" ").some((w) => w.length > 3 && desc.includes(w))) {
-        return { bucket: bucket.name, confidence: 0.7, reason: `Matched custom bucket: ${d.reason}` };
-      }
-    }
-  }
-
-  // Fallback
-  if (d.urgency === "medium" || d.actionability === "low") {
-    if (has("Can Wait")) return { bucket: "Can Wait", confidence: 0.6, reason: d.reason };
-  }
-
-  return { bucket: has("Can Wait") ? "Can Wait" : buckets[0]?.name || "Can Wait", confidence: 0.5, reason: d.reason };
-}
-
-// ── Guardrail: protect critical emails from auto-archive ──
+// ── Guardrail: protect critical emails from low-priority buckets ──
 
 function applyGuardrails(
   result: DimensionalClassification,
@@ -181,91 +85,124 @@ function applyGuardrails(
 
 // ── Main classification function ──
 
+interface LLMClassificationResult {
+  threadId: string;
+  bucket: string;
+  confidence: number;
+  reason: string;
+}
+
 export async function classifyWithLLM(
   client: OpenAI,
   model: string,
   threads: ThreadSummary[],
   buckets: BucketDef[],
 ): Promise<DimensionalClassification[]> {
-  // Trim inputs for speed
   const trimmedThreads = threads.map((t) => ({
-    threadId: t.id,
-    subject: t.subject.slice(0, 100),
-    sender: t.sender.slice(0, 50),
-    senderEmail: t.senderEmail,
-    snippet: t.snippet.slice(0, 150),
+    id: t.id,
+    subject: t.subject.slice(0, 120),
+    from: `${t.sender} <${t.senderEmail}>`,
+    preview: t.snippet.slice(0, 200),
   }));
 
-  const prompt = `Classify each email on these dimensions:
+  const bucketList = buckets.map((b) => {
+    let desc = `- "${b.name}"`;
+    if (b.description) desc += `: ${b.description}`;
+    if (b.examples) desc += ` (e.g. ${b.examples})`;
+    return desc;
+  }).join("\n");
 
-1. category: personal | work | finance | commerce | travel | newsletter | social | system | recruiting
-2. actionability: none | low | high
-3. urgency: low | medium | high
-4. risk: low | medium | high
-5. sender_type: person | service | bulk | unknown
+  const prompt = `You are an email classifier. Classify each email into EXACTLY ONE of these buckets:
 
-Threads:
+${bucketList}
+
+RULES:
+- Read each email's subject, sender, and preview carefully
+- Choose the SINGLE most appropriate bucket based on the email's actual content and sender
+- Political emails go to newsletters/updates buckets, NOT finance/trading buckets
+- Marketing, promotions, and bulk emails are newsletters
+- Personal emails from real people (not companies) go to personal/important buckets
+- Only use "Action Required" or "Important" for emails that genuinely need a response or attention
+- When unsure, prefer a general bucket over a specific wrong one
+- confidence: 0.0-1.0 (how sure you are)
+- reason: brief explanation (10 words max)
+
+Emails to classify:
 ${JSON.stringify(trimmedThreads)}
 
-JSON array only:
-[{"threadId":"...","category":"...","actionability":"...","urgency":"...","risk":"...","sender_type":"...","reason":"10 words max"}]`;
+Respond with a JSON array ONLY. No markdown, no backticks:
+[{"threadId":"...","bucket":"exact bucket name","confidence":0.9,"reason":"..."}]`;
 
   const response = await client.chat.completions.create({
     model,
     messages: [
-      { role: "system", content: "Email classifier. JSON only, no markdown." },
+      {
+        role: "system",
+        content: "You classify emails into user-defined buckets. Always respond with valid JSON only. Never wrap in markdown code blocks.",
+      },
       { role: "user", content: prompt },
     ],
   });
 
   const text = response.choices[0]?.message?.content || "";
-  const dimensional = parseDimensionalResponse(text);
+  const parsed = parseResponse(text);
 
-  // Build threadId → summary map for guardrails
+  // Validate bucket names and build results
+  const bucketNames = new Set(buckets.map((b) => b.name));
   const threadMap = new Map(threads.map((t) => [t.id, t]));
 
-  // Map dimensions → buckets, apply guardrails
-  return dimensional.map((d) => {
-    const mapped = mapDimensionsToBucket(d, buckets);
-    const thread = threadMap.get(d.threadId);
+  return parsed
+    .filter((r) => bucketNames.has(r.bucket))
+    .map((r) => {
+      const result: DimensionalClassification = {
+        threadId: r.threadId,
+        bucket: r.bucket,
+        confidence: r.confidence,
+        reason: r.reason,
+        category: "",
+        actionability: "",
+        urgency: "",
+        risk: "",
+        senderType: "",
+      };
 
-    const result: DimensionalClassification = {
-      threadId: d.threadId,
-      bucket: mapped.bucket,
-      confidence: mapped.confidence,
-      reason: mapped.reason,
-      category: d.category,
-      actionability: d.actionability,
-      urgency: d.urgency,
-      risk: d.risk,
-      senderType: d.sender_type,
-    };
-
-    if (thread) {
-      return applyGuardrails(result, thread.subject, thread.senderEmail, buckets);
-    }
-    return result;
-  });
+      const thread = threadMap.get(r.threadId);
+      if (thread) {
+        return applyGuardrails(result, thread.subject, thread.senderEmail, buckets);
+      }
+      return result;
+    });
 }
 
-function parseDimensionalResponse(raw: string): DimensionalResult[] {
+function parseResponse(raw: string): LLMClassificationResult[] {
   let cleaned = raw.trim();
-  cleaned = cleaned.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "");
-  cleaned = cleaned.trim();
-  return JSON.parse(cleaned);
+  cleaned = cleaned.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Fix bad escapes
+    cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      cleaned = cleaned.replace(/\\/g, "");
+      return JSON.parse(cleaned);
+    }
+  }
 }
 
 // Legacy export
 export function parseClassificationResponse(raw: string): Classification[] {
-  return parseDimensionalResponse(raw).map((d) => ({
-    threadId: d.threadId,
-    bucket: "",
-    confidence: 0,
-    reason: d.reason,
-    category: d.category,
-    actionability: d.actionability,
-    urgency: d.urgency,
-    risk: d.risk,
-    senderType: d.sender_type,
+  return parseResponse(raw).map((r) => ({
+    threadId: r.threadId,
+    bucket: r.bucket,
+    confidence: r.confidence,
+    reason: r.reason,
+    category: "",
+    actionability: "",
+    urgency: "",
+    risk: "",
+    senderType: "",
   }));
 }
