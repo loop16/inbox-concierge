@@ -55,9 +55,7 @@ export function applyAllRules(
   const auto = matchAutomatedEmail(thread, bucketByName);
   if (auto) return auto;
 
-  // Layer 3: Gmail label rules
-  const label = matchGmailLabels(thread, bucketByName);
-  if (label) return label;
+  // Layer 3: Gmail labels — skipped, let AI classify instead
 
   // Layer 4: Keyword rules on subject
   const kw = matchKeywordRules(thread, bucketByName);
@@ -138,9 +136,7 @@ function matchSenderRule(
 
 const NOREPLY_PREFIXES = [
   "noreply", "no-reply", "no_reply", "donotreply", "do-not-reply",
-  "notifications", "notification", "updates", "update",
-  "news", "newsletter", "digest", "marketing", "promotions", "promo",
-  "mailer-daemon", "info", "hello", "team",
+  "mailer-daemon",
 ];
 
 const BULK_SENDER_DOMAINS = new Set([
@@ -193,43 +189,21 @@ function matchAutomatedEmail(
     if (bucket) return result(bucket, `Bulk sender domain: ${domain}`, 0.92, "auto-detect");
   }
 
-  // Notification domains → route by subject
+  // Notification domains — only match receipts, let AI handle the rest
   if (NOTIFICATION_DOMAINS.has(domain)) {
-    // Receipt/finance from notification domains
     if (RECEIPT_SUBJECT_KEYWORDS.some((kw) => subjectLower.includes(kw))) {
       const bucket = findBucket(bucketByName, "Finance / Receipts", "Finance", "Receipts");
       if (bucket) return result(bucket, `Receipt from ${domain}`, 0.9, "auto-detect");
     }
-
-    // Calendar/meeting from notification domains
-    if (CALENDAR_SUBJECT_KEYWORDS.some((kw) => subjectLower.includes(kw))) {
-      const bucket = findBucket(bucketByName, "Can Wait", "Meetings");
-      if (bucket) return result(bucket, `Calendar/meeting from ${domain}`, 0.85, "auto-detect");
-    }
-
-    // Everything else from notification domains → Auto-Archive
-    const bucket = findBucket(bucketByName, "Auto-Archive", "Archive");
-    if (bucket) return result(bucket, `Notification from ${domain}`, 0.85, "auto-detect");
   }
 
-  // noreply-style sender prefixes
+  // noreply-style sender prefixes — only catch receipts, let AI handle the rest
   const isNoReply = NOREPLY_PREFIXES.some((p) => emailLocal === p || emailLocal.startsWith(p + "+"));
   if (isNoReply) {
-    // Check if it's a receipt
     if (RECEIPT_SUBJECT_KEYWORDS.some((kw) => subjectLower.includes(kw))) {
       const bucket = findBucket(bucketByName, "Finance / Receipts", "Finance", "Receipts");
       if (bucket) return result(bucket, `Receipt from ${thread.senderEmail}`, 0.88, "auto-detect");
     }
-
-    // noreply with newsletter-y subjects
-    if (/newsletter|digest|weekly|monthly|roundup|update/i.test(subjectLower)) {
-      const bucket = findBucket(bucketByName, "Newsletters", "Newsletter");
-      if (bucket) return result(bucket, `Newsletter from ${thread.senderEmail}`, 0.85, "auto-detect");
-    }
-
-    // Generic noreply → Newsletters or Auto-Archive
-    const bucket = findBucket(bucketByName, "Newsletters", "Auto-Archive", "Archive");
-    if (bucket) return result(bucket, `Automated sender: ${emailLocal}@`, 0.8, "auto-detect");
   }
 
   return null;
@@ -386,7 +360,7 @@ function matchCustomBuckets(
     }
   }
 
-  if (bestMatch && bestMatch.hits >= 1) {
+  if (bestMatch && bestMatch.hits >= 2) {
     return result(
       bestMatch.bucket,
       `Custom match: "${bestMatch.keyword}"${bestMatch.hits > 1 ? ` (+${bestMatch.hits - 1} more)` : ""}`,
