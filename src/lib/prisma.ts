@@ -1,3 +1,6 @@
+console.log("[PRISMA DEBUG] DATABASE_URL exists:", !!process.env.DATABASE_URL);
+console.log("[PRISMA DEBUG] DATABASE_URL starts with:", process.env.DATABASE_URL?.slice(0, 30));
+
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
