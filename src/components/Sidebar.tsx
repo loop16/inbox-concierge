@@ -1,0 +1,369 @@
+"use client";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAppStore } from "@/lib/store";
+import { getBucketColor } from "@/lib/colors";
+import { useState, useRef, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+
+interface Bucket {
+  id: string;
+  name: string;
+  description: string | null;
+  examples: string | null;
+  isDefault: boolean;
+  sortOrder: number;
+  _count: { threads: number };
+}
+
+interface ImapAccount {
+  id: string;
+  label: string;
+  email: string;
+  connected: boolean;
+}
+
+export default function Sidebar() {
+  const queryClient = useQueryClient();
+  const {
+    selectedBucketId,
+    setSelectedBucketId,
+    selectedProvider,
+    setSelectedProvider,
+    setNewBucketOpen,
+    draggingThreadId,
+    setActionToast,
+  } = useAppStore();
+
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const [menuBucket, setMenuBucket] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [deleteToast, setDeleteToast] = useState<string | null>(null);
+  const [sourcesOpen, setSourcesOpen] = useState(true);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
+  const handleDrop = async (e: React.DragEvent, bucketId: string, bucketName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetId(null);
+    // Get thread ID from store (more reliable than dataTransfer across containers)
+    const threadId = useAppStore.getState().draggingThreadId;
+    if (!threadId) return;
+
+    try {
+      const res = await fetch(`/api/threads/${threadId}/bucket`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bucketId }),
+      });
+      const data = await res.json();
+
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+
+      if (data.otherThreadsFromSender > 0) {
+        setActionToast({
+          id: threadId,
+          message: `Moved to ${data.bucketName}. ${data.otherThreadsFromSender} more from ${data.senderEmail}`,
+          actionLabel: "Apply to all",
+          onAction: async () => {
+            const applyRes = await fetch(`/api/threads/${threadId}/bucket/apply-to-sender`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ bucketId }),
+            });
+            const applyData = await applyRes.json();
+            setActionToast({
+              id: "applied",
+              message: `Moved ${applyData.moved} more threads from this sender`,
+            });
+            setTimeout(() => setActionToast(null), 4000);
+            queryClient.invalidateQueries({ queryKey: ["threads"] });
+            queryClient.invalidateQueries({ queryKey: ["buckets"] });
+          },
+        });
+        setTimeout(() => {
+          useAppStore.setState((s) => s.actionToast?.id === threadId ? { actionToast: null } : {});
+        }, 8000);
+      } else {
+        setActionToast({
+          id: threadId,
+          message: `Moved to ${bucketName}. Rule learned for ${data.senderEmail}`,
+        });
+        setTimeout(() => {
+          useAppStore.setState((s) => s.actionToast?.id === threadId ? { actionToast: null } : {});
+        }, 4000);
+      }
+    } catch {
+      // silent fail, queries will refetch
+    }
+  };
+
+  const { data: buckets = [], isLoading } = useQuery<Bucket[]>({
+    queryKey: ["buckets"],
+    queryFn: () => fetch("/api/buckets").then((r) => r.json()),
+  });
+
+  const { data: imapAccounts = [] } = useQuery<ImapAccount[]>({
+    queryKey: ["imap-accounts"],
+    queryFn: () => fetch("/api/imap/accounts").then((r) => r.json()),
+  });
+
+  const totalThreads = buckets.reduce((sum, b) => sum + b._count.threads, 0);
+
+  useEffect(() => {
+    const handler = () => setMenuBucket(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+
+  const goToInbox = () => {
+    if (pathname !== "/inbox") router.push("/inbox");
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, bucketId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuBucket(bucketId);
+    setMenuPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleEditBucket = (bucket: Bucket) => {
+    setMenuBucket(null);
+    useAppStore.setState({
+      newBucketOpen: true,
+      editingBucket: { id: bucket.id, name: bucket.name, description: bucket.description || "", examples: bucket.examples || "" },
+    });
+  };
+
+  const handleDeleteBucket = async (bucket: Bucket) => {
+    setMenuBucket(null);
+    if (bucket.isDefault) {
+      setDeleteToast("Cannot delete default buckets");
+      setTimeout(() => setDeleteToast(null), 3000);
+      return;
+    }
+    if (!confirm(`Delete "${bucket.name}"? Threads will become unclassified.`)) return;
+
+    const res = await fetch(`/api/buckets/${bucket.id}`, { method: "DELETE" });
+    if (res.ok) {
+      if (selectedBucketId === bucket.id) setSelectedBucketId(null);
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+    }
+  };
+
+  const activeBucket = menuBucket ? buckets.find((b) => b.id === menuBucket) : null;
+
+  return (
+    <aside
+      className="w-72 bg-white border-r border-stone-200 flex flex-col h-full relative"
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnter={(e) => e.preventDefault()}
+    >
+      <div className="p-4 flex-1 overflow-y-auto">
+        {/* Drag hint */}
+        {draggingThreadId && (
+          <div className="mb-3 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-medium text-center animate-pulse">
+            Drop on a bucket to move
+          </div>
+        )}
+        {/* Buckets */}
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 px-3 mb-2">
+          Buckets
+        </p>
+        <nav className="space-y-0.5" onDragOver={(e) => e.preventDefault()} onDragEnter={(e) => e.preventDefault()}>
+          <button
+            onClick={() => {
+              setSelectedBucketId(null);
+              setSelectedProvider(null);
+              goToInbox();
+            }}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer focus:outline-none ${
+              selectedBucketId === null && selectedProvider === null && pathname === "/inbox"
+                ? "bg-amber-50 text-amber-900"
+                : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+            }`}
+          >
+            <span>All</span>
+            <span className="text-xs text-stone-400">{totalThreads}</span>
+          </button>
+
+          {isLoading ? (
+            <div className="space-y-1 pt-1">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="h-9 bg-stone-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            buckets.map((bucket, i) => {
+              const color = getBucketColor(i);
+              const isDropTarget = draggingThreadId && dropTargetId === bucket.id;
+              return (
+                <div
+                  key={bucket.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    setSelectedBucketId(bucket.id);
+                    setSelectedProvider(null);
+                    goToInbox();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      setSelectedBucketId(bucket.id);
+                      setSelectedProvider(null);
+                      goToInbox();
+                    }
+                  }}
+                  onContextMenu={(e) => handleContextMenu(e, bucket.id)}
+                  onDragEnter={(e) => {
+                    e.preventDefault();
+                    setDropTargetId(bucket.id);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dropTargetId !== bucket.id) setDropTargetId(bucket.id);
+                  }}
+                  onDragLeave={(e) => {
+                    // Only clear if leaving the element entirely (not entering a child)
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setDropTargetId(null);
+                    }
+                  }}
+                  onDrop={(e) => handleDrop(e, bucket.id, bucket.name)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-all cursor-pointer focus:outline-none select-none ${
+                    isDropTarget
+                      ? "bg-amber-100 text-amber-900 ring-2 ring-amber-400 font-medium scale-[1.02]"
+                      : selectedBucketId === bucket.id
+                      ? "bg-amber-50 text-amber-900 font-medium"
+                      : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color.dot}`} />
+                    <span className="truncate">{bucket.name}</span>
+                  </div>
+                  <span className="text-xs text-stone-400 ml-2">
+                    {bucket._count.threads}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </nav>
+
+        {/* Sources */}
+        {imapAccounts.length > 0 && (
+          <div className="mt-6">
+            <button
+              onClick={() => setSourcesOpen(!sourcesOpen)}
+              className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-stone-400 px-3 mb-2 cursor-pointer hover:text-stone-600 w-full"
+            >
+              <svg className={`w-3 h-3 transition-transform ${sourcesOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              Sources
+            </button>
+            {sourcesOpen && (
+              <nav className="space-y-0.5">
+                <button
+                  onClick={() => {
+                    setSelectedProvider(null);
+                    goToInbox();
+                  }}
+                  className={`w-full flex items-center px-3 py-1.5 rounded-lg text-sm transition-colors cursor-pointer focus:outline-none ${
+                    selectedProvider === null
+                      ? "bg-stone-100 text-stone-900 font-medium"
+                      : "text-stone-500 hover:bg-stone-50 hover:text-stone-700"
+                  }`}
+                >
+                  All Sources
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedProvider("gmail");
+                    goToInbox();
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors cursor-pointer focus:outline-none ${
+                    selectedProvider === "gmail"
+                      ? "bg-stone-100 text-stone-900 font-medium"
+                      : "text-stone-500 hover:bg-stone-50 hover:text-stone-700"
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                  Gmail
+                </button>
+                {imapAccounts.map((acc) => (
+                  <button
+                    key={acc.id}
+                    onClick={() => {
+                      setSelectedProvider(acc.id);
+                      goToInbox();
+                    }}
+                    className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors cursor-pointer focus:outline-none ${
+                      selectedProvider === acc.id
+                        ? "bg-stone-100 text-stone-900 font-medium"
+                        : "text-stone-500 hover:bg-stone-50 hover:text-stone-700"
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${acc.connected ? "bg-sky-500" : "bg-stone-400"}`} />
+                    {acc.label}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-stone-200 p-4">
+        <button
+          onClick={() => {
+            useAppStore.setState({ editingBucket: null });
+            setNewBucketOpen(true);
+          }}
+          className="w-full py-2.5 px-4 text-sm font-medium border border-stone-300 text-stone-600 rounded-lg hover:bg-stone-50 hover:text-stone-800 transition-colors cursor-pointer focus:outline-none"
+        >
+          + New Bucket
+        </button>
+      </div>
+
+      {/* Context menu */}
+      {menuBucket && activeBucket && (
+        <div
+          ref={menuRef}
+          className="fixed bg-white border border-stone-200 rounded-lg shadow-xl py-1 z-[60] min-w-[140px]"
+          style={{ left: menuPos.x, top: menuPos.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => handleEditBucket(activeBucket)}
+            className="w-full text-left px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 cursor-pointer"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => handleDeleteBucket(activeBucket)}
+            className={`w-full text-left px-4 py-2 text-sm hover:bg-stone-50 cursor-pointer ${
+              activeBucket.isDefault ? "text-stone-400" : "text-red-600"
+            }`}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* Delete toast */}
+      {deleteToast && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 bg-zinc-900 text-white text-sm px-4 py-3 rounded-lg shadow-xl border border-zinc-700 z-[70]">
+          {deleteToast}
+        </div>
+      )}
+    </aside>
+  );
+}

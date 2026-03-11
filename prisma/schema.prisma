@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  accessToken   String?
+  refreshToken  String?
+  lastActiveAt  DateTime?
+  threads       Thread[]
+  buckets       Bucket[]
+  senderRules   SenderRule[]
+  imapAccounts  ImapAccount[]
+  createdAt     DateTime  @default(now())
+}
+
+model Thread {
+  id              String    @id @default(cuid())
+  gmailThreadId   String
+  subject         String
+  sender          String
+  senderEmail     String
+  snippet         String
+  date            DateTime
+  labelIds        String    @default("[]")
+  bucketId        String?
+  bucket          Bucket?   @relation(fields: [bucketId], references: [id])
+  confidence      Float?
+  reason          String?
+  manualOverride  Boolean   @default(false)
+  aiCategory      String?
+  aiActionability String?
+  aiUrgency       String?
+  aiRisk          String?
+  aiSenderType    String?
+  provider        String    @default("gmail")
+  providerLabel   String    @default("Gmail")
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  createdAt       DateTime  @default(now())
+
+  @@unique([userId, gmailThreadId])
+}
+
+model Bucket {
+  id            String    @id @default(cuid())
+  name          String
+  description   String?
+  examples      String?
+  isDefault     Boolean   @default(false)
+  sortOrder     Int       @default(0)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  threads       Thread[]
+  senderRules   SenderRule[]
+  createdAt     DateTime  @default(now())
+
+  @@unique([userId, name])
+}
+
+model SenderRule {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  senderEmail   String
+  senderDomain  String?
+  bucketId      String
+  bucket        Bucket    @relation(fields: [bucketId], references: [id])
+  source        String    @default("learned")
+  matchCount    Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, senderEmail])
+}
+
+model ImapAccount {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  label         String
+  email         String
+  imapHost      String
+  imapPort      Int       @default(993)
+  imapTls       Boolean   @default(true)
+  password      String
+  connected     Boolean   @default(false)
+  lastSyncAt    DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, email])
+}
