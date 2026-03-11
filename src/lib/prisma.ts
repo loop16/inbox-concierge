@@ -1,5 +1,4 @@
-import { neon } from "@neondatabase/serverless";
-import { PrismaNeon } from "@prisma/adapter-neon";
+import { PrismaNeonHttp } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
 
 const connectionString = process.env.DATABASE_URL;
@@ -7,9 +6,7 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
 
-const sql = neon(connectionString);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const adapter = new PrismaNeon(sql as any);
+const adapter = new PrismaNeonHttp(connectionString, {});
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 

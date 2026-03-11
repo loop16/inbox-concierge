@@ -1,10 +1,7 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaNeon } from "@prisma/adapter-neon";
-import { neon } from "@neondatabase/serverless";
+import { PrismaNeonHttp } from "@prisma/adapter-neon";
 
-const sql = neon(process.env.DATABASE_URL!);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const adapter = new PrismaNeon(sql as any);
+const adapter = new PrismaNeonHttp(process.env.DATABASE_URL!, {});
 const prisma = new PrismaClient({ adapter });
 
 const DEFAULT_BUCKETS = [
