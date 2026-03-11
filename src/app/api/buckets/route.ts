@@ -54,3 +54,43 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(bucket, { status: 201 });
 }
+
+const DEFAULT_BUCKETS = [
+  { name: "Action Required", sortOrder: 0 },
+  { name: "Important", sortOrder: 1 },
+  { name: "Can Wait", sortOrder: 2 },
+  { name: "Finance / Receipts", sortOrder: 3 },
+  { name: "Newsletters", sortOrder: 4 },
+  { name: "Recruiting / Job", sortOrder: 5 },
+  { name: "Personal", sortOrder: 6 },
+  { name: "Auto-Archive", sortOrder: 7 },
+];
+
+export async function DELETE() {
+  const auth = await getAuthSession();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Unlink all threads from buckets
+  await prisma.thread.updateMany({
+    where: { userId: auth.user.id },
+    data: { bucketId: null, confidence: null, reason: null },
+  });
+
+  // Delete all buckets
+  await prisma.bucket.deleteMany({
+    where: { userId: auth.user.id },
+  });
+
+  // Recreate defaults
+  await prisma.bucket.createMany({
+    data: DEFAULT_BUCKETS.map((b) => ({
+      ...b,
+      isDefault: true,
+      userId: auth.user.id,
+    })),
+  });
+
+  return NextResponse.json({ reset: true });
+}

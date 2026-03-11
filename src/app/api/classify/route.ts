@@ -64,7 +64,12 @@ export async function POST(request: NextRequest) {
           prisma.senderRule.findMany({ where: { userId: auth.user.id } }),
         ]);
 
+        // Case-insensitive bucket name → id mapping
         const bucketMap = new Map(buckets.map((b) => [b.name, b.id]));
+        const bucketMapLower = new Map(buckets.map((b) => [b.name.toLowerCase(), b.id]));
+        const resolveBucketId = (name: string): string | undefined => {
+          return bucketMap.get(name) ?? bucketMapLower.get(name.toLowerCase());
+        };
 
         // ── Reclassify: reset non-manual threads first ──
         if (reclassify) {
@@ -298,10 +303,10 @@ export async function POST(request: NextRequest) {
                 }
 
                 const updates = classifications
-                  .filter((c) => bucketMap.has(c.bucket))
+                  .filter((c) => resolveBucketId(c.bucket))
                   .map((c) => ({
                     id: c.threadId,
-                    bucketId: bucketMap.get(c.bucket)!,
+                    bucketId: resolveBucketId(c.bucket)!,
                     confidence: c.confidence,
                     reason: c.reason,
                     aiCategory: c.category,
@@ -311,7 +316,11 @@ export async function POST(request: NextRequest) {
                     aiSenderType: c.senderType,
                   }));
 
-                const batchFailed = classifications.filter((c) => !bucketMap.has(c.bucket)).length;
+                const unmatched = classifications.filter((c) => !resolveBucketId(c.bucket));
+                if (unmatched.length > 0) {
+                  console.warn(`[CLASSIFY] Unmatched bucket names:`, unmatched.map((c) => c.bucket));
+                }
+                const batchFailed = unmatched.length;
 
                 return {
                   batchNum,

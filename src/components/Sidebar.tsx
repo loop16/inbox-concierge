@@ -35,6 +35,21 @@ export default function Sidebar() {
     setActionToast,
   } = useAppStore();
 
+  const [resetting, setResetting] = useState(false);
+
+  const handleResetBuckets = async () => {
+    if (!confirm("Reset all buckets to defaults? All threads will become unclassified.")) return;
+    setResetting(true);
+    try {
+      await fetch("/api/buckets", { method: "DELETE" });
+      setSelectedBucketId(null);
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -339,6 +354,13 @@ export default function Sidebar() {
           className="w-full py-2.5 px-4 text-sm font-medium border border-stone-300 text-stone-600 rounded-lg hover:bg-stone-50 hover:text-stone-800 transition-colors cursor-pointer focus:outline-none"
         >
           + New Bucket
+        </button>
+        <button
+          onClick={handleResetBuckets}
+          disabled={resetting}
+          className="w-full py-2 px-4 text-xs text-stone-400 hover:text-red-600 transition-colors cursor-pointer focus:outline-none disabled:opacity-50"
+        >
+          {resetting ? "Resetting..." : "Reset Buckets to Defaults"}
         </button>
       </div>
 
