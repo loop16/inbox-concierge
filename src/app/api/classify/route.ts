@@ -119,21 +119,17 @@ export async function POST(request: NextRequest) {
         // ── Stats ──
         let skippedManualOverrides = 0;
         let senderRuleCount = 0;
-        let autoDetectCount = 0;
-        let keywordCount = 0;
-        let customMatchCount = 0;
-        let labelCount = 0;
         let llmBased = 0;
         let failed = 0;
         let processed = 0;
         let aiAvailable = true;
         let aiError: string | null = null;
 
-        const needsLLM: typeof threads = [];
-        const ruleUpdates: { id: string; bucketId: string; confidence: number; reason: string }[] = [];
+        const forAI: typeof threads = [];
+        const senderRuleUpdates: { id: string; bucketId: string; confidence: number; reason: string }[] = [];
         const ruleMatchIncrements = new Map<string, number>();
 
-        // ── Run all rules ──
+        // ── Only apply user-defined sender rules (these are explicit user choices) ──
         for (const thread of threads) {
           if (thread.manualOverride) {
             skippedManualOverrides++;
@@ -141,65 +137,47 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          const ruleThread: RuleThread = {
-            id: thread.id,
-            subject: thread.subject,
-            sender: thread.sender,
-            senderEmail: thread.senderEmail,
-            snippet: thread.snippet,
-            labelIds: thread.labelIds,
-          };
+          // Check sender rules only (exact email or domain match)
+          const emailRule = senderRuleMap.get(thread.senderEmail);
+          const domain = thread.senderEmail.split("@")[1]?.toLowerCase() || "";
+          const domainRule = !emailRule ? domainRuleMap.get(domain) : undefined;
+          const rule = emailRule || domainRule;
 
-          const match = applyAllRules(ruleThread, ruleBuckets, senderRules, senderRuleMap, domainRuleMap);
-
-          if (match) {
-            ruleUpdates.push({
-              id: thread.id,
-              bucketId: match.bucketId,
-              confidence: match.confidence,
-              reason: match.reason,
-            });
-
-            if (match.senderRuleId) {
-              ruleMatchIncrements.set(
-                match.senderRuleId,
-                (ruleMatchIncrements.get(match.senderRuleId) || 0) + 1,
-              );
+          if (rule) {
+            const bucket = buckets.find((b) => b.id === rule.bucketId);
+            if (bucket) {
+              senderRuleUpdates.push({
+                id: thread.id,
+                bucketId: rule.bucketId,
+                confidence: 0.95,
+                reason: `Sender rule: ${emailRule ? thread.senderEmail : domain}`,
+              });
+              ruleMatchIncrements.set(rule.id, (ruleMatchIncrements.get(rule.id) || 0) + 1);
+              senderRuleCount++;
+              processed++;
+              continue;
             }
-
-            switch (match.source) {
-              case "sender-rule": senderRuleCount++; break;
-              case "auto-detect": autoDetectCount++; break;
-              case "keyword": keywordCount++; break;
-              case "custom-match": customMatchCount++; break;
-              case "label": labelCount++; break;
-            }
-
-            processed++;
-          } else {
-            needsLLM.push(thread);
           }
+
+          // Everything else goes to AI
+          forAI.push(thread);
         }
 
-        const totalRules = senderRuleCount + autoDetectCount + keywordCount + customMatchCount + labelCount;
         send({
           phase: "rules",
           processed,
           total: threads.length,
-          rulesCaught: totalRules,
+          rulesCaught: senderRuleCount,
           senderRules: senderRuleCount,
-          autoDetect: autoDetectCount,
-          keywords: keywordCount,
-          customMatch: customMatchCount,
-          labels: labelCount,
+          autoDetect: 0, keywords: 0, customMatch: 0, labels: 0,
           skipped: skippedManualOverrides,
-          needsLLM: needsLLM.length,
+          needsLLM: forAI.length,
         });
 
-        // ── Flush rule-based writes in a transaction ──
-        if (ruleUpdates.length > 0) {
+        // ── Flush sender rule writes ──
+        if (senderRuleUpdates.length > 0) {
           await prisma.$transaction(
-            ruleUpdates.map((u) =>
+            senderRuleUpdates.map((u) =>
               prisma.thread.update({
                 where: { id: u.id },
                 data: {
@@ -212,7 +190,6 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Increment sender rule match counts
         if (ruleMatchIncrements.size > 0) {
           await prisma.$transaction(
             Array.from(ruleMatchIncrements.entries()).map(([ruleId, inc]) =>
@@ -226,9 +203,10 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // ── LLM classification (parallel batches) ──
+        // ── LLM classification — AI handles everything except sender rules ──
         const client = getLLMClient();
         const model = getLLMModel();
+        const needsLLM = forAI;
 
         if (client && needsLLM.length > 0) {
           const bucketDefs: BucketDef[] = buckets.map((b) => ({
@@ -390,20 +368,39 @@ export async function POST(request: NextRequest) {
             aiAvailable = false;
             send({
               phase: "fallback",
-              needsLLM: needsLLM.length - processed + totalRules + skippedManualOverrides,
-              message: `AI unavailable: ${aiError}. Remaining threads classified by rules only.`,
+              needsLLM: needsLLM.length,
+              message: `AI unavailable: ${aiError}. Unclassified threads remain.`,
             });
           }
         } else if (!client && needsLLM.length > 0) {
+          // No AI — fall back to rules for remaining threads
           aiAvailable = false;
           aiError = "No API key configured";
-          send({ phase: "fallback", needsLLM: needsLLM.length, message: "No AI provider — using rules only" });
-          failed += needsLLM.length;
+
+          let rulesFallback = 0;
+          for (const thread of needsLLM) {
+            const ruleThread: RuleThread = {
+              id: thread.id, subject: thread.subject, sender: thread.sender,
+              senderEmail: thread.senderEmail, snippet: thread.snippet, labelIds: thread.labelIds,
+            };
+            const match = applyAllRules(ruleThread, ruleBuckets, senderRules, senderRuleMap, domainRuleMap);
+            if (match) {
+              await prisma.thread.update({
+                where: { id: thread.id },
+                data: { bucket: { connect: { id: match.bucketId } }, confidence: match.confidence, reason: match.reason },
+              });
+              rulesFallback++;
+            } else {
+              failed++;
+            }
+          }
+          llmBased = 0;
           processed += needsLLM.length;
+          send({ phase: "fallback", needsLLM: needsLLM.length, rulesFallback, message: `No AI provider — ${rulesFallback} classified by rules, ${failed} unclassified` });
         }
 
         const timeMs = Date.now() - startTime;
-        const totalClassified = totalRules + llmBased;
+        const totalClassified = senderRuleCount + llmBased;
 
         send({
           phase: "complete",
@@ -411,10 +408,7 @@ export async function POST(request: NextRequest) {
           total: threads.length,
           skippedManualOverrides,
           senderRules: senderRuleCount,
-          autoDetect: autoDetectCount,
-          keywords: keywordCount,
-          customMatch: customMatchCount,
-          labels: labelCount,
+          autoDetect: 0, keywords: 0, customMatch: 0, labels: 0,
           llmBased,
           failed,
           timeMs,
