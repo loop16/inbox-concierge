@@ -12,6 +12,13 @@ interface SuggestedBucket {
   enabled: boolean;
 }
 
+const MIN_APPLY_VISIBLE_MS = 1200;
+
+async function waitForPaint() {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 export default function OnboardingModal() {
   const { onboardingOpen, setOnboardingOpen } = useAppStore();
   const queryClient = useQueryClient();
@@ -63,8 +70,12 @@ export default function OnboardingModal() {
 
     setStep("applying");
     setApplyStatus("Creating buckets");
+    const applyingStartedAt = performance.now();
 
     try {
+      // Let React commit the applying state and give the canvas a real paint.
+      await waitForPaint();
+
       // Add new AI-suggested buckets alongside defaults (don't delete defaults)
       if (enabled.length > 0) {
         for (const s of enabled) {
@@ -90,19 +101,24 @@ export default function OnboardingModal() {
         const decoder = new TextDecoder();
         let buf = "";
         let modalClosed = false;
-        let totalBatches = 1;
 
-        const closeModal = () => {
+        const closeModal = async () => {
           if (modalClosed) return;
           modalClosed = true;
+          const elapsed = performance.now() - applyingStartedAt;
+          const remaining = MIN_APPLY_VISIBLE_MS - elapsed;
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          }
           setOnboardingOpen(false);
           setStep("loading");
           setSuggestions([]);
           setEditingIdx(null);
+          setApplyStatus("");
           hasFetched.current = false;
         };
 
-        // Read stream in background — close modal once 50%+ batches done
+        // Read stream in background and keep the loader visible until classify finishes.
         (async () => {
           try {
             while (true) {
@@ -115,20 +131,15 @@ export default function OnboardingModal() {
                 if (!line.trim()) continue;
                 try {
                   const evt = JSON.parse(line);
-                  if (evt.phase === "llm-batches") {
-                    totalBatches = evt.totalBatches || 1;
-                  } else if (evt.phase === "llm-progress") {
+                  if (evt.phase === "llm-progress") {
                     setApplyStatus(`Classifying ${evt.processed} of ${evt.total}`);
                     queryClient.invalidateQueries({ queryKey: ["buckets"] });
                     queryClient.invalidateQueries({ queryKey: ["threads"] });
-                    // Close modal once 50% of batches are done
-                    if (evt.batchesCompleted >= Math.ceil(totalBatches / 2)) {
-                      closeModal();
-                    }
                   } else if (evt.phase === "complete") {
                     queryClient.invalidateQueries({ queryKey: ["buckets"] });
                     queryClient.invalidateQueries({ queryKey: ["threads"] });
-                    closeModal();
+                    await closeModal();
+                    return;
                   }
                 } catch { /* ignore malformed */ }
               }
@@ -136,11 +147,16 @@ export default function OnboardingModal() {
           } finally {
             queryClient.invalidateQueries({ queryKey: ["buckets"] });
             queryClient.invalidateQueries({ queryKey: ["threads"] });
-            closeModal();
+            await closeModal();
           }
         })();
       } else {
         // No stream — just close
+        const elapsed = performance.now() - applyingStartedAt;
+        const remaining = MIN_APPLY_VISIBLE_MS - elapsed;
+        if (remaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, remaining));
+        }
         setOnboardingOpen(false);
       }
     } catch {
