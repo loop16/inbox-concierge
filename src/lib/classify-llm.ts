@@ -122,9 +122,11 @@ Respond with a JSON array ONLY. No markdown, no backticks:
       },
       { role: "user", content: prompt },
     ],
+    response_format: { type: "json_object" },
   });
 
   const text = response.choices[0]?.message?.content || "";
+  console.log(`[LLM] Model: ${model}, response length: ${text.length}, first 200 chars: ${text.slice(0, 200)}`);
   const parsed = parseResponse(text);
 
   // Validate bucket names (case-insensitive) and build results
@@ -155,15 +157,27 @@ function parseResponse(raw: string): LLMClassificationResult[] {
   let cleaned = raw.trim();
   cleaned = cleaned.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
 
+  const extract = (data: unknown): LLMClassificationResult[] => {
+    if (Array.isArray(data)) return data;
+    // Handle wrapped responses like {"results": [...]} or {"classifications": [...]}
+    if (data && typeof data === "object") {
+      const values = Object.values(data as Record<string, unknown>);
+      for (const v of values) {
+        if (Array.isArray(v)) return v;
+      }
+    }
+    return [];
+  };
+
   try {
-    return JSON.parse(cleaned);
+    return extract(JSON.parse(cleaned));
   } catch {
     cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
     try {
-      return JSON.parse(cleaned);
+      return extract(JSON.parse(cleaned));
     } catch {
       cleaned = cleaned.replace(/\\/g, "");
-      return JSON.parse(cleaned);
+      return extract(JSON.parse(cleaned));
     }
   }
 }

@@ -74,25 +74,36 @@ Respond with JSON only. No markdown. No backticks. Format:
         },
         { role: "user", content: prompt },
       ],
+      response_format: { type: "json_object" },
     });
 
     const text = response.choices[0]?.message?.content || "";
+    console.log(`[SUGGEST] Model: ${model}, response length: ${text.length}`);
     let cleaned = text.trim();
     cleaned = cleaned.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
 
-    let suggestions;
+    let parsed;
     try {
-      suggestions = JSON.parse(cleaned);
+      parsed = JSON.parse(cleaned);
     } catch {
-      // Fix bad escape characters the LLM sometimes produces
       cleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
       try {
-        suggestions = JSON.parse(cleaned);
+        parsed = JSON.parse(cleaned);
       } catch {
-        // Last resort: strip all backslashes that aren't part of valid JSON escapes
         cleaned = cleaned.replace(/\\/g, "");
-        suggestions = JSON.parse(cleaned);
+        parsed = JSON.parse(cleaned);
       }
+    }
+
+    // Handle wrapped responses like {"suggestions": [...]} or {"buckets": [...]}
+    let suggestions;
+    if (Array.isArray(parsed)) {
+      suggestions = parsed;
+    } else if (parsed && typeof parsed === "object") {
+      const values = Object.values(parsed as Record<string, unknown>);
+      suggestions = values.find((v) => Array.isArray(v)) || [];
+    } else {
+      suggestions = [];
     }
 
     return NextResponse.json({ suggestions });
