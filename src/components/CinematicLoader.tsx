@@ -404,7 +404,7 @@ export default function CinematicLoader({
     return (
       <div
         ref={containerRef}
-        className="w-full flex flex-col items-center"
+        className="relative z-10 w-full flex flex-col items-center"
         style={{ opacity, transition: "opacity 0.5s ease-in-out" }}
       >
         <canvas

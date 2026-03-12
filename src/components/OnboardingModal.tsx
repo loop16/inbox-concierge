@@ -158,7 +158,7 @@ export default function OnboardingModal() {
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 border border-stone-200 overflow-hidden max-h-[85vh] flex flex-col">
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 border border-stone-200 overflow-hidden max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-stone-100 flex-shrink-0">
           <div className="flex items-center gap-3 mb-2">
