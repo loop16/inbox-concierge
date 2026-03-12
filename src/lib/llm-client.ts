@@ -31,6 +31,12 @@ export function getLLMClient(): OpenAI | null {
   return null;
 }
 
+// Fast model for bulk classification
 export function getLLMModel(): string {
   return process.env.LLM_MODEL || process.env.OPENAI_MODEL || "gemini-2.0-flash";
+}
+
+// Smart model for analysis tasks (bucket suggestions, pattern discovery)
+export function getSmartModel(): string {
+  return process.env.LLM_SMART_MODEL || "gemini-2.5-flash";
 }

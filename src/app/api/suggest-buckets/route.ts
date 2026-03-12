@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getLLMClient, getLLMModel } from "@/lib/llm-client";
+import { getLLMClient, getSmartModel } from "@/lib/llm-client";
 
 export async function POST() {
   const auth = await getAuthSession();
@@ -10,7 +10,7 @@ export async function POST() {
   }
 
   const client = getLLMClient();
-  const model = getLLMModel();
+  const model = getSmartModel();
   if (!client) {
     return NextResponse.json({ error: "AI classification is temporarily unavailable" }, { status: 503 });
   }
