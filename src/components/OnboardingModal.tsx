@@ -23,35 +23,21 @@ export default function OnboardingModal() {
   const [applyStatus, setApplyStatus] = useState("");
 
   const hasFetched = useRef(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const animCleanupRef = useRef<(() => void) | null>(null);
 
-  // Start/stop dot animation when entering/leaving "applying" step
-  useEffect(() => {
-    if (step !== "applying") {
+  // Ref callback — fires the instant the canvas enters/leaves the DOM
+  const canvasCallback = (el: HTMLCanvasElement | null) => {
+    if (el) {
+      const dpr = window.devicePixelRatio || 1;
+      el.width = 440 * dpr;
+      el.height = 260 * dpr;
+      animCleanupRef.current?.();
+      animCleanupRef.current = startAnimation(el, () => ({ w: 440, h: 260 }), 80, "#f59e0b", "#ffffff", true, undefined);
+    } else {
       animCleanupRef.current?.();
       animCleanupRef.current = null;
-      return;
     }
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // Fixed size — no dynamic measurement needed
-    const getSize = () => ({ w: 440, h: 260 });
-
-    // Set canvas buffer immediately
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = 440 * dpr;
-    canvas.height = 260 * dpr;
-
-    animCleanupRef.current = startAnimation(canvas, getSize, 80, "#f59e0b", "#ffffff", true, undefined);
-
-    return () => {
-      animCleanupRef.current?.();
-      animCleanupRef.current = null;
-    };
-  }, [step]);
+  };
 
   const fetchSuggestions = async () => {
     setStep("loading");
@@ -231,7 +217,7 @@ export default function OnboardingModal() {
           {step === "applying" && (
             <div className="relative z-10 w-full flex flex-col items-center">
               <canvas
-                ref={canvasRef}
+                ref={canvasCallback}
                 style={{ width: 440, height: 260, display: "block", maxWidth: "100%" }}
               />
               {applyStatus && (
