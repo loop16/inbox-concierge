@@ -78,11 +78,30 @@ function shapeBars(x: number, y: number): boolean {
   return false;
 }
 
-function shapeCheckmark(x: number, y: number): boolean {
-  return (
-    distToSegment(x, y, 0.18, 0.52, 0.42, 0.73) < 0.058 ||
-    distToSegment(x, y, 0.42, 0.73, 0.83, 0.24) < 0.058
-  );
+function shapeHorse(x: number, y: number): boolean {
+  // Running horse silhouette
+  // Body (horizontal ellipse)
+  const bodyDx = (x - 0.48) / 0.22;
+  const bodyDy = (y - 0.44) / 0.11;
+  if (bodyDx * bodyDx + bodyDy * bodyDy < 1) return true;
+  // Head
+  const headDx = (x - 0.22) / 0.06;
+  const headDy = (y - 0.28) / 0.07;
+  if (headDx * headDx + headDy * headDy < 1) return true;
+  // Neck
+  if (distToSegment(x, y, 0.30, 0.36, 0.25, 0.30) < 0.045) return true;
+  // Ears
+  if (distToSegment(x, y, 0.20, 0.22, 0.18, 0.17) < 0.02) return true;
+  if (distToSegment(x, y, 0.23, 0.22, 0.22, 0.17) < 0.02) return true;
+  // Front legs — extended forward (gallop)
+  if (distToSegment(x, y, 0.34, 0.53, 0.22, 0.72) < 0.028) return true;
+  if (distToSegment(x, y, 0.38, 0.54, 0.30, 0.72) < 0.028) return true;
+  // Back legs — extended back (gallop)
+  if (distToSegment(x, y, 0.62, 0.52, 0.74, 0.72) < 0.028) return true;
+  if (distToSegment(x, y, 0.58, 0.53, 0.68, 0.72) < 0.028) return true;
+  // Tail
+  if (distToSegment(x, y, 0.68, 0.37, 0.80, 0.28) < 0.035) return true;
+  return false;
 }
 
 function shapeFilledCircle(x: number, y: number): boolean {
@@ -130,16 +149,7 @@ interface Formation {
 function buildFormations(count: number): Formation[] {
   const allScales = new Array(count).fill(1);
 
-  // Origin: all dots at center, only first is visible
-  const originScales = new Array(count).fill(0);
-  originScales[0] = 1;
-
   return [
-    {
-      label: "origin",
-      points: Array.from({ length: count }, () => [0.5, 0.5] as [number, number]),
-      scales: originScales,
-    },
     {
       label: "ring",
       points: sampleShape(shapeRing, count),
@@ -151,6 +161,11 @@ function buildFormations(count: number): Formation[] {
       scales: [...allScales],
     },
     {
+      label: "horse",
+      points: sampleShape(shapeHorse, count),
+      scales: [...allScales],
+    },
+    {
       label: "grid",
       points: sampleShape(shapeGrid, count),
       scales: [...allScales],
@@ -158,11 +173,6 @@ function buildFormations(count: number): Formation[] {
     {
       label: "bars",
       points: sampleShape(shapeBars, count),
-      scales: [...allScales],
-    },
-    {
-      label: "checkmark",
-      points: sampleShape(shapeCheckmark, count),
       scales: [...allScales],
     },
     {
@@ -245,9 +255,9 @@ export default function CinematicLoader({
     const staggerSpread = 0.55;
     const dotTransFrac = 1 - staggerSpread;
 
-    // Dot radii — smaller for inline mode
-    const radiusBase = inline ? 1.4 : 2.8;
-    const radiusRange = inline ? 0.6 : 1.2;
+    // Dot radii — 2x for inline mode
+    const radiusBase = inline ? 2.8 : 2.8;
+    const radiusRange = inline ? 1.2 : 1.2;
     const baseRadii = Array.from({ length: dotCount }, () => radiusBase + Math.random() * radiusRange);
 
     // Resize handler
@@ -369,10 +379,7 @@ export default function CinematicLoader({
           y = cy;
           scale = cScale;
 
-          if (phaseIdx === 0 && i === 0) {
-            const pulse = 0.6 + Math.sin(elapsed * 2.8) * 0.4;
-            scale = pulse;
-          }
+          // no-op
         }
 
         if (scale < 0.02) continue;
@@ -455,31 +462,16 @@ export default function CinematicLoader({
 /*
  ─── Story Beat Mapping ───
 
- Phase 0 — "Origin"     → Single dot pulses at center. Emergence. Creation.
- Phase 1 — "Ring"       → Dot expands into a ring of many. Awakening.
- Phase 2 — "Envelope"   → Ring morphs into mail icon. "Reading your emails."
- Phase 3 — "Grid"       → Envelope dissolves into organized grid. "Analyzing patterns."
+ Phase 0 — "Ring"       → Dots appear in a ring. Awakening.
+ Phase 1 — "Envelope"   → Ring morphs into mail icon. "Reading your emails."
+ Phase 2 — "Horse"      → Envelope morphs into galloping horse. Speed.
+ Phase 3 — "Grid"       → Horse dissolves into organized grid. "Analyzing patterns."
  Phase 4 — "Bars"       → Grid reshapes into bar chart. "Classifying into categories."
- Phase 5 — "Checkmark"  → Bars morph into checkmark. "Organized."
- Phase 6 — "Circle"     → Checkmark becomes filled circle. Brand mark. Hold.
- Loop    — Circle collapses back to single dot. Seamless restart.
+ Phase 5 — "Circle"     → Bars become filled circle. Brand mark. Hold.
+ Loop    — Circle morphs back to ring. Seamless restart.
 
- ─── Timing (default 26s loop) ───
+ ─── Timing ───
 
  Each phase: 2.0s hold + 1.7s transition = 3.7s
- 7 phases × 3.7s = 25.9s ≈ 26s
-
- ─── Tuning Guide ───
-
- color           — Dot color. Default: "#f59e0b" (amber-500)
- backgroundColor — Overlay background. Default: "#000000"
- dotCount        — Number of dots. More = denser shapes. Default: 500
- duration        — Not currently used for timing (phases are fixed), reserved for future
- progress        — If set (0-100), maps animation phases linearly to loading progress
-                   If unset, animation loops on a timer
- holdTime        — How long each shape holds before transitioning (line ~180)
- transitionTime  — How long each morph takes (line ~181)
- staggerSpread   — How spread-out the per-dot stagger is (line ~186). Higher = more wave-like
- baseRadii range — Dot size variation (line ~190). Narrow range = more uniform
- shapeScale      — How large shapes render relative to screen (line ~214)
+ 6 phases × 3.7s = 22.2s
 */
