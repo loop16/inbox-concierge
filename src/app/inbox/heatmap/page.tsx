@@ -109,29 +109,29 @@ function layoutTreemap(
   return rects;
 }
 
-/* ─── liquid glass color palette ─── */
+/* ─── amber/orange color palette ─── */
 
 const PALETTE = [
-  { bg: "rgba(255,100,100,0.35)", hi: "rgba(255,140,140,0.4)", text: "#C0344D", glow: "rgba(255,100,100,0.2)", border: "rgba(255,100,100,0.3)" },
-  { bg: "rgba(78,205,196,0.35)", hi: "rgba(110,216,208,0.4)", text: "#1A8A80", glow: "rgba(78,205,196,0.2)", border: "rgba(78,205,196,0.3)" },
-  { bg: "rgba(69,183,209,0.35)", hi: "rgba(104,200,222,0.4)", text: "#1A6D8A", glow: "rgba(69,183,209,0.2)", border: "rgba(69,183,209,0.3)" },
-  { bg: "rgba(247,220,111,0.4)", hi: "rgba(249,230,138,0.45)", text: "#8A7500", glow: "rgba(247,220,111,0.2)", border: "rgba(247,220,111,0.35)" },
-  { bg: "rgba(187,143,206,0.35)", hi: "rgba(205,168,221,0.4)", text: "#6A3A80", glow: "rgba(187,143,206,0.2)", border: "rgba(187,143,206,0.3)" },
-  { bg: "rgba(88,214,141,0.35)", hi: "rgba(120,224,165,0.4)", text: "#1A7A3D", glow: "rgba(88,214,141,0.2)", border: "rgba(88,214,141,0.3)" },
-  { bg: "rgba(240,135,106,0.35)", hi: "rgba(244,160,138,0.4)", text: "#A04530", glow: "rgba(240,135,106,0.2)", border: "rgba(240,135,106,0.3)" },
-  { bg: "rgba(93,173,226,0.35)", hi: "rgba(125,189,232,0.4)", text: "#1A5A8A", glow: "rgba(93,173,226,0.2)", border: "rgba(93,173,226,0.3)" },
-  { bg: "rgba(241,148,138,0.35)", hi: "rgba(245,173,165,0.4)", text: "#A03A30", glow: "rgba(241,148,138,0.2)", border: "rgba(241,148,138,0.3)" },
-  { bg: "rgba(130,224,170,0.35)", hi: "rgba(160,232,192,0.4)", text: "#1A6A30", glow: "rgba(130,224,170,0.2)", border: "rgba(130,224,170,0.3)" },
-  { bg: "rgba(133,193,233,0.35)", hi: "rgba(160,208,238,0.4)", text: "#1A5080", glow: "rgba(133,193,233,0.2)", border: "rgba(133,193,233,0.3)" },
-  { bg: "rgba(215,189,226,0.35)", hi: "rgba(226,206,232,0.4)", text: "#5A2A6A", glow: "rgba(215,189,226,0.2)", border: "rgba(215,189,226,0.3)" },
+  { bg: "rgba(245,158,11,0.35)", hi: "rgba(245,158,11,0.45)", text: "#92400e", glow: "rgba(245,158,11,0.2)", border: "rgba(245,158,11,0.35)" },
+  { bg: "rgba(217,119,6,0.35)", hi: "rgba(217,119,6,0.45)", text: "#78350f", glow: "rgba(217,119,6,0.2)", border: "rgba(217,119,6,0.35)" },
+  { bg: "rgba(251,191,36,0.35)", hi: "rgba(251,191,36,0.45)", text: "#854d0e", glow: "rgba(251,191,36,0.2)", border: "rgba(251,191,36,0.35)" },
+  { bg: "rgba(234,88,12,0.30)", hi: "rgba(234,88,12,0.40)", text: "#7c2d12", glow: "rgba(234,88,12,0.18)", border: "rgba(234,88,12,0.30)" },
+  { bg: "rgba(253,186,116,0.40)", hi: "rgba(253,186,116,0.50)", text: "#9a3412", glow: "rgba(253,186,116,0.22)", border: "rgba(253,186,116,0.35)" },
+  { bg: "rgba(180,83,9,0.30)", hi: "rgba(180,83,9,0.40)", text: "#7c2d12", glow: "rgba(180,83,9,0.18)", border: "rgba(180,83,9,0.28)" },
+  { bg: "rgba(252,211,77,0.38)", hi: "rgba(252,211,77,0.48)", text: "#92400e", glow: "rgba(252,211,77,0.2)", border: "rgba(252,211,77,0.35)" },
+  { bg: "rgba(249,115,22,0.30)", hi: "rgba(249,115,22,0.40)", text: "#9a3412", glow: "rgba(249,115,22,0.18)", border: "rgba(249,115,22,0.30)" },
+  { bg: "rgba(245,158,11,0.28)", hi: "rgba(245,158,11,0.38)", text: "#78350f", glow: "rgba(245,158,11,0.15)", border: "rgba(245,158,11,0.28)" },
+  { bg: "rgba(234,179,8,0.35)", hi: "rgba(234,179,8,0.45)", text: "#854d0e", glow: "rgba(234,179,8,0.2)", border: "rgba(234,179,8,0.32)" },
+  { bg: "rgba(251,146,60,0.35)", hi: "rgba(251,146,60,0.45)", text: "#7c2d12", glow: "rgba(251,146,60,0.2)", border: "rgba(251,146,60,0.32)" },
+  { bg: "rgba(253,224,71,0.35)", hi: "rgba(253,224,71,0.45)", text: "#854d0e", glow: "rgba(253,224,71,0.2)", border: "rgba(253,224,71,0.32)" },
 ];
 
 const UNCLASSIFIED = {
-  bg: "rgba(180,180,190,0.3)",
-  hi: "rgba(200,200,210,0.35)",
-  text: "#5D6D7E",
-  glow: "rgba(180,180,190,0.15)",
-  border: "rgba(180,180,190,0.25)",
+  bg: "rgba(168,162,158,0.25)",
+  hi: "rgba(168,162,158,0.35)",
+  text: "#57534e",
+  glow: "rgba(168,162,158,0.15)",
+  border: "rgba(168,162,158,0.25)",
 };
 
 function colorFor(sortOrder: number, id: string) {
@@ -371,7 +371,7 @@ export default function HeatmapPage() {
       ref={containerRef}
       className="relative overflow-hidden select-none h-full"
       style={{
-        background: "linear-gradient(135deg, #f0f4f8 0%, #e8edf5 25%, #f5f0f0 50%, #edf5f0 75%, #f0f0f8 100%)",
+        background: "linear-gradient(135deg, #fefce8 0%, #fff7ed 25%, #fffbeb 50%, #fef3c7 75%, #fff7ed 100%)",
         width: "100%",
       }}
     >
