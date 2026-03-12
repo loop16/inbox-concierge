@@ -304,13 +304,12 @@ export async function POST(request: NextRequest) {
                 aiSenderType: c.senderType,
               }));
 
-            const unmatched = classifications.filter((c) => !resolveBucketId(c.bucket));
-            if (unmatched.length > 0) {
-              console.warn(`[CLASSIFY] Unmatched bucket names:`, unmatched.map((c) => c.bucket));
-            }
-
             llmBased = updates.length;
-            failed += unmatched.length;
+            const unmatchedBucketIds = classifications.length - updates.length;
+            failed += unmatchedBucketIds;
+            if (unmatchedBucketIds > 0) {
+              console.warn(`[CLASSIFY] ${unmatchedBucketIds} classifications had no matching bucket ID`);
+            }
 
             if (updates.length > 0) {
               await prisma.$transaction(

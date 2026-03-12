@@ -35,7 +35,7 @@ export async function POST(
     messages: [
       {
         role: "system",
-        content: "You summarize emails concisely. Be direct and useful. No filler.",
+        content: "You summarize emails concisely. Be direct and useful. No filler. Always respond with valid JSON.",
       },
       {
         role: "user",
@@ -46,9 +46,10 @@ From: ${thread.sender} <${thread.senderEmail}>
 Preview: ${thread.snippet}
 ${thread.bucket ? `Bucket: ${thread.bucket.name}` : ""}
 
-Respond with JSON only: {"summary":"...","action":"..." or null}`,
+Return JSON: {"summary":"...","action":"..." or null}`,
       },
     ],
+    response_format: { type: "json_object" },
   });
 
   const text = response.choices[0]?.message?.content || "";

@@ -100,22 +100,32 @@ ${JSON.stringify(candidates.map((c, i) => ({
   senderType: c.thread.aiSenderType,
 })))}
 
-Return JSON only:
-[{"idx": 0, "why": "10 word max reason why this email matters"}, ...]
+Return JSON: {"picks":[{"idx": 0, "why": "10 word max reason why this email matters"}, ...]}
 
-Pick exactly 5. JSON array only, no markdown.`;
+Pick exactly 5.`;
 
       const response = await client.chat.completions.create({
         model,
         messages: [
-          { role: "system", content: "Email priority ranker. JSON only." },
+          { role: "system", content: "Email priority ranker. Always respond with valid JSON only." },
           { role: "user", content: prompt },
         ],
+        response_format: { type: "json_object" },
       });
 
       const text = response.choices[0]?.message?.content || "";
       const cleaned = text.trim().replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/i, "").trim();
-      const picks: { idx: number; why: string }[] = JSON.parse(cleaned);
+      let parsed;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const reCleaned = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+        parsed = JSON.parse(reCleaned);
+      }
+      // Handle wrapped responses like {"picks": [...]} or bare array
+      const picks: { idx: number; why: string }[] = Array.isArray(parsed)
+        ? parsed
+        : (Object.values(parsed as Record<string, unknown>).find((v) => Array.isArray(v)) as { idx: number; why: string }[]) || [];
 
       const top = picks
         .filter((p) => p.idx >= 0 && p.idx < candidates.length)

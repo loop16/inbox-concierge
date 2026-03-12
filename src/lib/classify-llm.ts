@@ -61,25 +61,36 @@ export async function classifyWithLLM(
     return entry;
   });
 
-  const bucketList = buckets.map((b) => `"${b.name}"`).join(", ");
+  // Build bucket list with descriptions so AI understands each bucket
+  const bucketLines = buckets.map((b) => {
+    let line = `- "${b.name}"`;
+    if (b.description) line += `: ${b.description}`;
+    if (b.examples) line += ` (e.g. ${b.examples})`;
+    return line;
+  }).join("\n");
 
-  const prompt = `Classify each email into one of these buckets: ${bucketList}
+  const prompt = `Classify each email into EXACTLY one of these buckets. You MUST use the exact bucket name as shown in quotes:
 
-If an email has "suggested", keep that bucket unless clearly wrong.
-If "unsub" is true, it's likely a newsletter or marketing email.
-Receipts, orders, ride summaries, invoices → "Finance / Receipts"
+${bucketLines}
+
+Rules:
+- If an email has "suggested", keep that bucket unless clearly wrong.
+- If "unsub" is true, it's likely a newsletter or marketing email.
+- Receipts, orders, ride summaries, invoices, payments → "Finance / Receipts"
+- Every email MUST be classified into one of the buckets above.
+- Use the EXACT bucket name string including spaces and slashes.
 
 Emails:
 ${JSON.stringify(trimmed)}
 
-Return a JSON object with key "results" containing an array:
-{"results":[{"threadId":"...","bucket":"exact bucket name","confidence":0.9,"reason":"short reason"}]}`;
+Return JSON: {"results":[{"threadId":"<the id field>","bucket":"<exact bucket name>","confidence":0.9,"reason":"short reason"}]}
+IMPORTANT: threadId must match the "id" field from each email exactly. bucket must be one of the exact names listed above.`;
 
   const t0 = Date.now();
   const response = await client.chat.completions.create({
     model,
     messages: [
-      { role: "system", content: "You classify emails into buckets. Respond with JSON only." },
+      { role: "system", content: "You classify emails into predefined buckets. Always respond with valid JSON. Use exact bucket names as provided." },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
@@ -90,27 +101,46 @@ Return a JSON object with key "results" containing an array:
   console.log(`[LLM] ${model} ${threads.length} emails in ${elapsed}ms, ${text.length} chars`);
   const parsed = parseResponse(text);
 
-  // Validate bucket names (case-insensitive) and build results
+  // Build fuzzy bucket name matching
   const bucketNameSet = new Set(buckets.map((b) => b.name));
   const bucketNamesLower = new Map(buckets.map((b) => [b.name.toLowerCase(), b.name]));
+  // Also match with normalized spaces/slashes: "Finance/Receipts" → "Finance / Receipts"
+  const bucketNamesNormalized = new Map<string, string>();
+  for (const b of buckets) {
+    const normalized = b.name.toLowerCase().replace(/\s+/g, "").replace(/\//g, "/");
+    bucketNamesNormalized.set(normalized, b.name);
+  }
+
+  const resolveBucketName = (raw: string): string | undefined => {
+    if (bucketNameSet.has(raw)) return raw;
+    const lower = raw.toLowerCase();
+    if (bucketNamesLower.has(lower)) return bucketNamesLower.get(lower);
+    const normalized = lower.replace(/\s+/g, "").replace(/\//g, "/");
+    if (bucketNamesNormalized.has(normalized)) return bucketNamesNormalized.get(normalized);
+    // Try partial match: if the LLM returned a substring of a bucket name
+    for (const [key, name] of bucketNamesLower) {
+      if (key.includes(lower) || lower.includes(key)) return name;
+    }
+    return undefined;
+  };
 
   // Normalize: support both compact {t,b,c,n} and full {threadId,bucket,confidence,reason}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const normalized: LLMClassificationResult[] = parsed.map((r: any) => ({
-    threadId: (r.t || r.threadId || "") as string,
+    threadId: (r.t || r.threadId || r.id || "") as string,
     bucket: (r.b || r.bucket || "") as string,
     confidence: (r.c ?? r.confidence ?? 0.5) as number,
     reason: (r.n || r.reason || "") as string,
   }));
 
-  return normalized
+  const results = normalized
     .map((r) => {
-      const exactName = bucketNameSet.has(r.bucket) ? r.bucket : bucketNamesLower.get(r.bucket.toLowerCase());
-      if (!exactName) return null;
+      const resolvedName = resolveBucketName(r.bucket);
+      if (!resolvedName) return null;
 
       return {
         threadId: r.threadId,
-        bucket: exactName,
+        bucket: resolvedName,
         confidence: r.confidence,
         reason: r.reason,
         category: "",
@@ -121,6 +151,15 @@ Return a JSON object with key "results" containing an array:
       } as DimensionalClassification;
     })
     .filter((r): r is DimensionalClassification => r !== null);
+
+  const unmatched = normalized.filter((r) => !resolveBucketName(r.bucket));
+  if (unmatched.length > 0) {
+    console.warn(`[LLM] Unmatched bucket names from AI:`, unmatched.map((c) => c.bucket));
+    console.warn(`[LLM] Available buckets:`, buckets.map((b) => b.name));
+  }
+  console.log(`[LLM] Matched ${results.length}/${normalized.length} classifications`);
+
+  return results;
 }
 
 function parseResponse(raw: string): LLMClassificationResult[] {
