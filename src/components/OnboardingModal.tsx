@@ -2,8 +2,8 @@
 
 import { useAppStore } from "@/lib/store";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { startAnimation } from "./CinematicLoader";
+import { useState, useEffect, useRef } from "react";
+import CinematicLoader from "./CinematicLoader";
 
 interface SuggestedBucket {
   name: string;
@@ -23,22 +23,6 @@ export default function OnboardingModal() {
   const [applyStatus, setApplyStatus] = useState("");
 
   const hasFetched = useRef(false);
-  const animCleanupRef = useRef<(() => void) | null>(null);
-
-  // Ref callback — fires the instant the canvas enters/leaves the DOM
-  // Wrapped in useCallback so React doesn't re-call it on every render
-  const canvasCallback = useCallback((el: HTMLCanvasElement | null) => {
-    if (el) {
-      const dpr = window.devicePixelRatio || 1;
-      el.width = 440 * dpr;
-      el.height = 260 * dpr;
-      animCleanupRef.current?.();
-      animCleanupRef.current = startAnimation(el, () => ({ w: 440, h: 260 }), 80, "#f59e0b", "#ffffff", true, undefined);
-    } else {
-      animCleanupRef.current?.();
-      animCleanupRef.current = null;
-    }
-  }, []);
 
   const fetchSuggestions = async () => {
     setStep("loading");
@@ -225,20 +209,14 @@ export default function OnboardingModal() {
 
           {/* Dot morph animation for classification phase — canvas rendered directly */}
           {step === "applying" && (
-            <div className="relative z-10 w-full flex flex-col items-center">
-              <canvas
-                ref={canvasCallback}
-                style={{ width: 440, height: 260, display: "block", maxWidth: "100%" }}
-              />
-              {applyStatus && (
-                <p
-                  className="text-xs font-medium tracking-[0.15em] uppercase mt-3 text-center"
-                  style={{ color: "#b45309", opacity: 0.8 }}
-                >
-                  {applyStatus}
-                </p>
-              )}
-            </div>
+            <CinematicLoader
+              inline
+              isLoading
+              dotCount={80}
+              color="#f59e0b"
+              backgroundColor="#ffffff"
+              message={applyStatus}
+            />
           )}
 
           {/* Error */}
