@@ -3,6 +3,7 @@
 import { useAppStore } from "@/lib/store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
+import ParticleLoader from "./ParticleLoader";
 
 interface SuggestedBucket {
   name: string;
@@ -179,9 +180,8 @@ export default function OnboardingModal() {
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Loading */}
           {step === "loading" && (
-            <div className="flex flex-col items-center justify-center py-12 gap-4">
-              <div className="w-10 h-10 border-3 border-amber-600 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-stone-500">Reading your emails and finding patterns...</p>
+            <div className="flex flex-col items-center justify-center py-4">
+              <ParticleLoader message="Reading your emails and finding patterns..." size={180} />
             </div>
           )}
 
@@ -302,9 +302,8 @@ export default function OnboardingModal() {
 
           {/* Applying */}
           {step === "applying" && (
-            <div className="flex flex-col items-center justify-center py-12 gap-4">
-              <div className="w-10 h-10 border-3 border-amber-600 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-stone-600 font-medium">{applyStatus}</p>
+            <div className="flex flex-col items-center justify-center py-4">
+              <ParticleLoader message={applyStatus} size={180} />
             </div>
           )}
 

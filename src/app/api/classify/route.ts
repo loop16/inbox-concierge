@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
           let llmAborted = false;
 
           // Small batches with high parallelism for speed
-          const BATCH_SIZE = 20;
+          const BATCH_SIZE = 10;
           const allSummaries: ThreadSummary[] = needsLLM.map((t) => ({
             id: t.id,
             subject: t.subject,
