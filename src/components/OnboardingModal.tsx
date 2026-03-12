@@ -97,58 +97,61 @@ export default function OnboardingModal() {
 
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
 
-      // Classify with all buckets (defaults + new ones)
+      // Classify — fire and close modal once first results arrive
       setApplyStatus("Classifying emails");
       const classifyRes = await fetch("/api/classify", { method: "POST" });
       if (classifyRes.body) {
         const reader = classifyRes.body.getReader();
         const decoder = new TextDecoder();
         let buf = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split("\n");
-          buf = lines.pop() || "";
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const evt = JSON.parse(line);
-              if (evt.phase === "llm-progress") {
-                setApplyStatus(`Classifying ${evt.processed} of ${evt.total}`);
-                queryClient.invalidateQueries({ queryKey: ["buckets"] });
-                queryClient.invalidateQueries({ queryKey: ["threads"] });
-              } else if (evt.phase === "rules") {
-                const ruleCount = evt.rulesCaught || 0;
-                setApplyStatus(
-                  ruleCount > 0
-                    ? `Rules matched ${ruleCount} — AI classifying ${evt.needsLLM}`
-                    : `AI classifying ${evt.needsLLM} emails`
-                );
-              } else if (evt.phase === "llm") {
-                setApplyStatus(`AI classifying ${evt.total} emails`);
-              } else if (evt.phase === "discover") {
-                setApplyStatus(evt.message);
-              } else if (evt.phase === "discover-created") {
-                setApplyStatus(`New buckets: ${evt.buckets?.join(", ")}`);
-                queryClient.invalidateQueries({ queryKey: ["buckets"] });
+        let modalClosed = false;
+
+        const closeModal = () => {
+          if (modalClosed) return;
+          modalClosed = true;
+          setOnboardingOpen(false);
+          setStep("loading");
+          setSuggestions([]);
+          setEditingIdx(null);
+          hasFetched.current = false;
+        };
+
+        // Read stream in background — close modal on first results
+        (async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buf += decoder.decode(value, { stream: true });
+              const lines = buf.split("\n");
+              buf = lines.pop() || "";
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                  const evt = JSON.parse(line);
+                  if (evt.phase === "llm-progress") {
+                    queryClient.invalidateQueries({ queryKey: ["buckets"] });
+                    queryClient.invalidateQueries({ queryKey: ["threads"] });
+                    // First batch done — close modal, let user see results
+                    closeModal();
+                  } else if (evt.phase === "complete") {
+                    queryClient.invalidateQueries({ queryKey: ["buckets"] });
+                    queryClient.invalidateQueries({ queryKey: ["threads"] });
+                    closeModal();
+                  }
+                } catch { /* ignore malformed */ }
               }
-            } catch { /* ignore malformed */ }
+            }
+          } finally {
+            queryClient.invalidateQueries({ queryKey: ["buckets"] });
+            queryClient.invalidateQueries({ queryKey: ["threads"] });
+            closeModal();
           }
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["buckets"] });
-      queryClient.invalidateQueries({ queryKey: ["threads"] });
-
-      setStep("done");
-      setTimeout(() => {
+        })();
+      } else {
+        // No stream — just close
         setOnboardingOpen(false);
-        setStep("loading");
-        setSuggestions([]);
-        setEditingIdx(null);
-        hasFetched.current = false;
-      }, 1500);
+      }
     } catch {
       setError("Something went wrong. You can set up buckets manually.");
       setStep("error");
