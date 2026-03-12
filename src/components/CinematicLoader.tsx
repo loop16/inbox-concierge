@@ -297,9 +297,11 @@ function startAnimation(
   };
 }
 
-// ─── Inline Component (no visibility state, renders immediately) ───
+// ─── Inline Component ───
+// Always stays mounted. Starts/stops animation based on isLoading prop.
 
 function InlineCinematicLoader({
+  isLoading,
   message,
   color = "#f59e0b",
   backgroundColor,
@@ -308,10 +310,27 @@ function InlineCinematicLoader({
 }: CinematicLoaderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   const bg = (!backgroundColor || backgroundColor === "#000000") ? "#ffffff" : backgroundColor;
 
   useEffect(() => {
+    if (!isLoading) {
+      // Stop animation and clear canvas
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const dpr = window.devicePixelRatio || 1;
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+      return;
+    }
+
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
@@ -321,11 +340,20 @@ function InlineCinematicLoader({
       return { w: rect.width, h: rect.height };
     };
 
-    return startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
-  }, [dotCount, color, bg, progress]);
+    cleanupRef.current = startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
+
+    return () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    };
+  }, [isLoading, dotCount, color, bg, progress]);
 
   return (
-    <div ref={containerRef} className="relative z-10 w-full flex flex-col items-center">
+    <div
+      ref={containerRef}
+      className="relative z-10 w-full flex flex-col items-center"
+      style={{ display: isLoading ? "flex" : "none" }}
+    >
       <canvas
         ref={canvasRef}
         style={{ width: "100%", height: 260, display: "block" }}

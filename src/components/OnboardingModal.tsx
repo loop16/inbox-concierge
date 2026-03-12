@@ -140,10 +140,14 @@ export default function OnboardingModal() {
     }
   };
 
-  // Auto-start fetching when modal opens
+  // Auto-start fetching when modal opens — always reset state on reopen
   useEffect(() => {
     if (onboardingOpen && !hasFetched.current) {
       hasFetched.current = true;
+      setStep("loading");
+      setSuggestions([]);
+      setEditingIdx(null);
+      setError(null);
       fetchSuggestions();
     }
     if (!onboardingOpen) {
@@ -184,19 +188,19 @@ export default function OnboardingModal() {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Inline cinematic animation during loading/applying */}
-          {cinematicActive && (
-            <CinematicLoader
-              isLoading
-              inline
-              dotCount={80}
-              message={
-                step === "loading"
+          {/* Inline cinematic animation — always mounted, controlled by isLoading */}
+          <CinematicLoader
+            isLoading={cinematicActive}
+            inline
+            dotCount={80}
+            message={
+              cinematicActive
+                ? step === "loading"
                   ? "Analyzing your inbox"
                   : applyStatus
-              }
-            />
-          )}
+                : undefined
+            }
+          />
 
           {/* Error */}
           {step === "error" && (
