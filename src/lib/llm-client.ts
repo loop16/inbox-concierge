@@ -31,12 +31,18 @@ export function getLLMClient(): OpenAI | null {
   return null;
 }
 
+const _isGemini = !!(process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY);
+
 // Fast model for bulk classification
 export function getLLMModel(): string {
-  return process.env.LLM_MODEL || process.env.OPENAI_MODEL || "gemini-2.0-flash";
+  if (process.env.LLM_MODEL) return process.env.LLM_MODEL;
+  // Only use OPENAI_MODEL if we're actually using OpenAI, not Gemini
+  if (!_isGemini && process.env.OPENAI_MODEL) return process.env.OPENAI_MODEL;
+  return _isGemini ? "gemini-2.0-flash" : "gpt-4o-mini";
 }
 
 // Smart model for analysis tasks (bucket suggestions, pattern discovery)
 export function getSmartModel(): string {
-  return process.env.LLM_SMART_MODEL || "gemini-2.5-flash";
+  if (process.env.LLM_SMART_MODEL) return process.env.LLM_SMART_MODEL;
+  return _isGemini ? "gemini-2.5-flash" : "gpt-4o";
 }
