@@ -6,14 +6,14 @@ import { useEffect, useRef, useState } from "react";
 
 interface CinematicLoaderProps {
   isLoading: boolean;
-  progress?: number; // 0-100, maps animation to loading progress
+  progress?: number;
   message?: string;
   color?: string;
   backgroundColor?: string;
   dotCount?: number;
-  duration?: number; // total loop duration in seconds
+  duration?: number;
   onRevealComplete?: () => void;
-  inline?: boolean; // render inside a container instead of full-screen overlay
+  inline?: boolean;
 }
 
 // ─── Math Helpers ───
@@ -35,7 +35,6 @@ function distToSegment(
 }
 
 // ─── Shape Definitions ───
-// Each function tests if a normalized point (0-1, 0-1) is inside the shape
 
 function shapeRing(x: number, y: number): boolean {
   const d = Math.hypot(x - 0.5, y - 0.5);
@@ -43,9 +42,7 @@ function shapeRing(x: number, y: number): boolean {
 }
 
 function shapeEnvelope(x: number, y: number): boolean {
-  // Body rectangle
   if (x >= 0.15 && x <= 0.85 && y >= 0.40 && y <= 0.75) return true;
-  // Flap triangle: (0.15, 0.40) → (0.50, 0.22) → (0.85, 0.40)
   if (y >= 0.22 && y < 0.40) {
     const t = (0.40 - y) / 0.18;
     return x >= 0.15 + t * 0.35 && x <= 0.85 - t * 0.35;
@@ -79,27 +76,19 @@ function shapeBars(x: number, y: number): boolean {
 }
 
 function shapeHorse(x: number, y: number): boolean {
-  // Running horse silhouette
-  // Body (horizontal ellipse)
   const bodyDx = (x - 0.48) / 0.22;
   const bodyDy = (y - 0.44) / 0.11;
   if (bodyDx * bodyDx + bodyDy * bodyDy < 1) return true;
-  // Head
   const headDx = (x - 0.22) / 0.06;
   const headDy = (y - 0.28) / 0.07;
   if (headDx * headDx + headDy * headDy < 1) return true;
-  // Neck
   if (distToSegment(x, y, 0.30, 0.36, 0.25, 0.30) < 0.045) return true;
-  // Ears
   if (distToSegment(x, y, 0.20, 0.22, 0.18, 0.17) < 0.02) return true;
   if (distToSegment(x, y, 0.23, 0.22, 0.22, 0.17) < 0.02) return true;
-  // Front legs — extended forward (gallop)
   if (distToSegment(x, y, 0.34, 0.53, 0.22, 0.72) < 0.028) return true;
   if (distToSegment(x, y, 0.38, 0.54, 0.30, 0.72) < 0.028) return true;
-  // Back legs — extended back (gallop)
   if (distToSegment(x, y, 0.62, 0.52, 0.74, 0.72) < 0.028) return true;
   if (distToSegment(x, y, 0.58, 0.53, 0.68, 0.72) < 0.028) return true;
-  // Tail
   if (distToSegment(x, y, 0.68, 0.37, 0.80, 0.28) < 0.035) return true;
   return false;
 }
@@ -109,7 +98,6 @@ function shapeFilledCircle(x: number, y: number): boolean {
 }
 
 // ─── Formation Generator ───
-// Samples evenly-distributed points inside a shape
 
 function sampleShape(
   test: (x: number, y: number) => boolean,
@@ -129,7 +117,6 @@ function sampleShape(
     return Array.from({ length: count }, () => [0.5, 0.5] as [number, number]);
   }
 
-  // Evenly pick 'count' points
   const result: [number, number][] = [];
   const step = candidates.length / count;
   for (let i = 0; i < count; i++) {
@@ -143,47 +130,22 @@ function sampleShape(
 interface Formation {
   points: [number, number][];
   scales: number[];
-  label: string; // story beat name
+  label: string;
 }
 
 function buildFormations(count: number): Formation[] {
   const allScales = new Array(count).fill(1);
 
   return [
-    {
-      label: "ring",
-      points: sampleShape(shapeRing, count),
-      scales: [...allScales],
-    },
-    {
-      label: "envelope",
-      points: sampleShape(shapeEnvelope, count),
-      scales: [...allScales],
-    },
-    {
-      label: "horse",
-      points: sampleShape(shapeHorse, count),
-      scales: [...allScales],
-    },
-    {
-      label: "grid",
-      points: sampleShape(shapeGrid, count),
-      scales: [...allScales],
-    },
-    {
-      label: "bars",
-      points: sampleShape(shapeBars, count),
-      scales: [...allScales],
-    },
-    {
-      label: "circle",
-      points: sampleShape(shapeFilledCircle, count),
-      scales: [...allScales],
-    },
+    { label: "ring", points: sampleShape(shapeRing, count), scales: [...allScales] },
+    { label: "envelope", points: sampleShape(shapeEnvelope, count), scales: [...allScales] },
+    { label: "horse", points: sampleShape(shapeHorse, count), scales: [...allScales] },
+    { label: "grid", points: sampleShape(shapeGrid, count), scales: [...allScales] },
+    { label: "bars", points: sampleShape(shapeBars, count), scales: [...allScales] },
+    { label: "circle", points: sampleShape(shapeFilledCircle, count), scales: [...allScales] },
   ];
 }
 
-// Precompute stagger values for each formation (distance from center, normalized)
 function buildStaggers(formations: Formation[]): number[][] {
   return formations.map((f) => {
     const dists = f.points.map(([x, y]) => Math.hypot(x - 0.5, y - 0.5));
@@ -192,32 +154,212 @@ function buildStaggers(formations: Formation[]): number[][] {
   });
 }
 
-// ─── Component ───
+// ─── Shared animation loop ───
 
-export default function CinematicLoader({
-  isLoading,
+function startAnimation(
+  canvas: HTMLCanvasElement,
+  getSize: () => { w: number; h: number },
+  dotCount: number,
+  color: string,
+  bg: string,
+  isInline: boolean,
+  progress: number | undefined,
+): () => void {
+  const ctx = canvas.getContext("2d")!;
+  const dpr = window.devicePixelRatio || 1;
+
+  const formations = buildFormations(dotCount);
+  const staggers = buildStaggers(formations);
+  const numFormations = formations.length;
+
+  const holdTime = 2.0;
+  const transitionTime = 1.7;
+  const phaseLength = holdTime + transitionTime;
+  const totalDuration = numFormations * phaseLength;
+
+  const staggerSpread = 0.55;
+  const dotTransFrac = 1 - staggerSpread;
+
+  const baseRadii = Array.from({ length: dotCount }, () => 2.8 + Math.random() * 1.2);
+  const pulsePhases = Array.from({ length: dotCount }, () => Math.random() * Math.PI * 2);
+
+  const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const startTime = performance.now();
+  let rafId = 0;
+
+  const resize = () => {
+    const { w, h } = getSize();
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  };
+  resize();
+  window.addEventListener("resize", resize);
+
+  const animate = (now: number) => {
+    const elapsed = (now - startTime) / 1000;
+    const { w, h } = getSize();
+
+    if (w === 0 || h === 0) {
+      rafId = requestAnimationFrame(animate);
+      return;
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    const dim = Math.min(w, h);
+    const shapeScale = isInline ? dim * 0.7 : dim * 0.52;
+    const offsetX = (w - shapeScale) / 2;
+    const offsetY = isInline ? (h - shapeScale) / 2 : (h - shapeScale) / 2 - dim * 0.03;
+    const dotSizeScale = isInline ? Math.max(dim / 350, 0.6) : Math.max(dim / 550, 0.8);
+
+    if (prefersReduced) {
+      const circle = formations[numFormations - 1];
+      ctx.fillStyle = color;
+      for (let i = 0; i < dotCount; i++) {
+        const [nx, ny] = circle.points[i];
+        ctx.beginPath();
+        ctx.arc(offsetX + nx * shapeScale, offsetY + ny * shapeScale, baseRadii[i] * dotSizeScale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      rafId = requestAnimationFrame(animate);
+      return;
+    }
+
+    let loopTime: number;
+    if (progress !== undefined && progress >= 0) {
+      loopTime = Math.min(progress / 100, 0.99) * totalDuration;
+    } else {
+      loopTime = elapsed % totalDuration;
+    }
+
+    const phaseIdx = Math.floor(loopTime / phaseLength) % numFormations;
+    const phaseTime = loopTime - phaseIdx * phaseLength;
+    const nextIdx = (phaseIdx + 1) % numFormations;
+
+    const isTransitioning = phaseTime >= holdTime;
+    const rawTransProgress = isTransitioning ? (phaseTime - holdTime) / transitionTime : 0;
+
+    const current = formations[phaseIdx];
+    const next = formations[nextIdx];
+    const nextStaggers = staggers[nextIdx];
+
+    ctx.fillStyle = color;
+
+    for (let i = 0; i < dotCount; i++) {
+      const [cx, cy] = current.points[i];
+      const cScale = current.scales[i];
+
+      let x: number, y: number, scale: number;
+
+      if (isTransitioning) {
+        const [nx, ny] = next.points[i];
+        const nScale = next.scales[i];
+        const sg = nextStaggers[i];
+
+        const dotStart = sg * staggerSpread;
+        const dotEnd = dotStart + dotTransFrac;
+        let dp: number;
+        if (rawTransProgress >= dotEnd) dp = 1;
+        else if (rawTransProgress > dotStart) dp = easeInOutCubic((rawTransProgress - dotStart) / dotTransFrac);
+        else dp = 0;
+
+        x = cx + (nx - cx) * dp;
+        y = cy + (ny - cy) * dp;
+        scale = cScale + (nScale - cScale) * dp;
+      } else {
+        x = cx;
+        y = cy;
+        scale = cScale;
+      }
+
+      if (scale < 0.02) continue;
+
+      const pulse = 0.75 + Math.sin(elapsed * 2.2 + pulsePhases[i]) * 0.25;
+      const px = offsetX + x * shapeScale;
+      const py = offsetY + y * shapeScale;
+      const r = baseRadii[i] * dotSizeScale * scale * pulse;
+
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    rafId = requestAnimationFrame(animate);
+  };
+
+  rafId = requestAnimationFrame(animate);
+
+  return () => {
+    cancelAnimationFrame(rafId);
+    window.removeEventListener("resize", resize);
+  };
+}
+
+// ─── Inline Component (no visibility state, renders immediately) ───
+
+function InlineCinematicLoader({
+  message,
+  color = "#f59e0b",
+  backgroundColor,
+  dotCount = 80,
   progress,
+}: CinematicLoaderProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const bg = (!backgroundColor || backgroundColor === "#000000") ? "#ffffff" : backgroundColor;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const getSize = () => {
+      const rect = container.getBoundingClientRect();
+      return { w: rect.width, h: rect.height };
+    };
+
+    return startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
+  }, [dotCount, color, bg, progress]);
+
+  return (
+    <div ref={containerRef} className="relative z-10 w-full flex flex-col items-center">
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", height: 260, display: "block" }}
+      />
+      {message && (
+        <p
+          className="text-xs font-medium tracking-[0.15em] uppercase mt-3 text-center"
+          style={{ color: "#b45309", opacity: 0.8 }}
+        >
+          {message}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Overlay Component (full-screen with fade in/out) ───
+
+function OverlayCinematicLoader({
+  isLoading,
   message,
   color = "#f59e0b",
   backgroundColor = "#000000",
   dotCount = 500,
-  duration = 26,
+  progress,
   onRevealComplete,
-  inline = false,
 }: CinematicLoaderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const animRef = useRef<number>(0);
   const [opacity, setOpacity] = useState(0);
   const [visible, setVisible] = useState(false);
   const wasLoadingRef = useRef(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
-  const bg = inline ? (backgroundColor === "#000000" ? "#ffffff" : backgroundColor) : backgroundColor;
-
-  // Inline mode: always visible when mounted (parent controls mounting)
-  // Overlay mode: fade in/out with visibility state
   useEffect(() => {
-    if (inline) return; // inline skips this
     if (isLoading) {
       wasLoadingRef.current = true;
       setVisible(true);
@@ -232,214 +374,30 @@ export default function CinematicLoader({
       }, 800);
       return () => clearTimeout(timer);
     }
-  }, [isLoading, onRevealComplete, inline]);
+  }, [isLoading, onRevealComplete]);
 
-  // Main animation
-  const shouldAnimate = inline || visible;
   useEffect(() => {
-    if (!shouldAnimate) return;
+    if (!visible) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const ctx = canvas.getContext("2d")!;
-    const dpr = window.devicePixelRatio || 1;
-
-    // Build formations
-    const formations = buildFormations(dotCount);
-    const staggers = buildStaggers(formations);
-    const numFormations = formations.length;
-
-    // Timing
-    const holdTime = 2.0;
-    const transitionTime = 1.7;
-    const phaseLength = holdTime + transitionTime;
-    const totalDuration = numFormations * phaseLength;
-
-    const staggerSpread = 0.55;
-    const dotTransFrac = 1 - staggerSpread;
-
-    // Dot radii
-    const baseRadii = Array.from({ length: dotCount }, () => 2.8 + Math.random() * 1.2);
-    // Per-dot phase offsets for size pulsing
-    const pulsePhases = Array.from({ length: dotCount }, () => Math.random() * Math.PI * 2);
-
-    // Resize handler
-    const resize = () => {
-      if (inline) {
-        const container = containerRef.current;
-        if (!container) return;
-        const rect = container.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-      } else {
-        canvas.width = window.innerWidth * dpr;
-        canvas.height = window.innerHeight * dpr;
-      }
-    };
-    resize();
-    window.addEventListener("resize", resize);
-
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const startTime = performance.now();
-
-    const animate = (now: number) => {
-      const elapsed = (now - startTime) / 1000;
-
-      let w: number, h: number;
-      if (inline) {
-        const container = containerRef.current;
-        if (!container) { animRef.current = requestAnimationFrame(animate); return; }
-        const rect = container.getBoundingClientRect();
-        w = rect.width;
-        h = rect.height;
-      } else {
-        w = window.innerWidth;
-        h = window.innerHeight;
-      }
-
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, w, h);
-
-      const dim = Math.min(w, h);
-      const shapeScale = inline ? dim * 0.7 : dim * 0.52;
-      const offsetX = (w - shapeScale) / 2;
-      const offsetY = inline
-        ? (h - shapeScale) / 2
-        : (h - shapeScale) / 2 - dim * 0.03;
-
-      const dotSizeScale = inline ? Math.max(dim / 350, 0.6) : Math.max(dim / 550, 0.8);
-
-      if (prefersReduced) {
-        const circle = formations[numFormations - 1];
-        ctx.fillStyle = color;
-        for (let i = 0; i < dotCount; i++) {
-          const [nx, ny] = circle.points[i];
-          ctx.beginPath();
-          ctx.arc(
-            offsetX + nx * shapeScale,
-            offsetY + ny * shapeScale,
-            baseRadii[i] * dotSizeScale,
-            0, Math.PI * 2,
-          );
-          ctx.fill();
-        }
-        animRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
-      let loopTime: number;
-      if (progress !== undefined && progress >= 0) {
-        loopTime = Math.min(progress / 100, 0.99) * totalDuration;
-      } else {
-        loopTime = elapsed % totalDuration;
-      }
-
-      const phaseIdx = Math.floor(loopTime / phaseLength) % numFormations;
-      const phaseTime = loopTime - phaseIdx * phaseLength;
-      const nextIdx = (phaseIdx + 1) % numFormations;
-
-      const isTransitioning = phaseTime >= holdTime;
-      const rawTransProgress = isTransitioning
-        ? (phaseTime - holdTime) / transitionTime
-        : 0;
-
-      const current = formations[phaseIdx];
-      const next = formations[nextIdx];
-      const nextStaggers = staggers[nextIdx];
-
-      ctx.fillStyle = color;
-
-      for (let i = 0; i < dotCount; i++) {
-        const [cx, cy] = current.points[i];
-        const cScale = current.scales[i];
-
-        let x: number, y: number, scale: number;
-
-        if (isTransitioning) {
-          const [nx, ny] = next.points[i];
-          const nScale = next.scales[i];
-          const sg = nextStaggers[i];
-
-          const dotStart = sg * staggerSpread;
-          const dotEnd = dotStart + dotTransFrac;
-          let dp: number;
-          if (rawTransProgress >= dotEnd) {
-            dp = 1;
-          } else if (rawTransProgress > dotStart) {
-            dp = easeInOutCubic(
-              (rawTransProgress - dotStart) / dotTransFrac,
-            );
-          } else {
-            dp = 0;
-          }
-
-          x = cx + (nx - cx) * dp;
-          y = cy + (ny - cy) * dp;
-          scale = cScale + (nScale - cScale) * dp;
-        } else {
-          x = cx;
-          y = cy;
-          scale = cScale;
-        }
-
-        if (scale < 0.02) continue;
-
-        // Per-dot size pulsing
-        const pulse = 0.75 + Math.sin(elapsed * 2.2 + pulsePhases[i]) * 0.25;
-
-        const px = offsetX + x * shapeScale;
-        const py = offsetY + y * shapeScale;
-        const r = baseRadii[i] * dotSizeScale * scale * pulse;
-
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      animRef.current = requestAnimationFrame(animate);
-    };
-
-    animRef.current = requestAnimationFrame(animate);
+    const getSize = () => ({ w: window.innerWidth, h: window.innerHeight });
+    cleanupRef.current = startAnimation(canvas, getSize, dotCount, color, backgroundColor, false, progress);
 
     return () => {
-      cancelAnimationFrame(animRef.current);
-      window.removeEventListener("resize", resize);
+      cleanupRef.current?.();
+      cleanupRef.current = null;
     };
-  }, [shouldAnimate, dotCount, color, bg, duration, progress, inline]);
+  }, [visible, dotCount, color, backgroundColor, progress]);
 
-  if (!inline && !visible) return null;
+  if (!visible) return null;
 
-  // Inline mode: render inside parent container
-  if (inline) {
-    return (
-      <div
-        ref={containerRef}
-        className="relative z-10 w-full flex flex-col items-center"
-      >
-        <canvas
-          ref={canvasRef}
-          style={{ width: "100%", height: 260, display: "block" }}
-        />
-        {message && (
-          <p
-            className="text-xs font-medium tracking-[0.15em] uppercase mt-3 text-center"
-            style={{ color: "#b45309", opacity: 0.8 }}
-          >
-            {message}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  // Full-screen overlay mode
   return (
     <div
       className="fixed inset-0 z-[100]"
       style={{
         opacity,
-        backgroundColor: bg,
+        backgroundColor,
         transition: "opacity 0.7s ease-in-out",
         pointerEvents: isLoading ? "all" : "none",
       }}
@@ -462,19 +420,11 @@ export default function CinematicLoader({
   );
 }
 
-/*
- ─── Story Beat Mapping ───
+// ─── Main Export ───
 
- Phase 0 — "Ring"       → Dots appear in a ring. Awakening.
- Phase 1 — "Envelope"   → Ring morphs into mail icon. "Reading your emails."
- Phase 2 — "Horse"      → Envelope morphs into galloping horse. Speed.
- Phase 3 — "Grid"       → Horse dissolves into organized grid. "Analyzing patterns."
- Phase 4 — "Bars"       → Grid reshapes into bar chart. "Classifying into categories."
- Phase 5 — "Circle"     → Bars become filled circle. Brand mark. Hold.
- Loop    — Circle morphs back to ring. Seamless restart.
-
- ─── Timing ───
-
- Each phase: 2.0s hold + 1.7s transition = 3.7s
- 6 phases × 3.7s = 22.2s
-*/
+export default function CinematicLoader(props: CinematicLoaderProps) {
+  if (props.inline) {
+    return <InlineCinematicLoader {...props} />;
+  }
+  return <OverlayCinematicLoader {...props} />;
+}

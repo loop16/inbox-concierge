@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     data: {
       name: name.trim(),
       description: description || null,
-      examples: examples || null,
+      examples: Array.isArray(examples) ? examples.join(", ") : (examples || null),
       sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
       userId: auth.user.id,
     },
