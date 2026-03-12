@@ -7,7 +7,7 @@ import {
   type RuleBucket,
   type RuleSenderRule,
 } from "@/lib/classify-rules";
-import { getLLMClient, getLLMModel } from "@/lib/llm-client";
+import { getLLMClient, getLLMModel, getLLMModelFallbacks } from "@/lib/llm-client";
 import {
   classifyWithLLM,
   type ThreadSummary,
@@ -257,25 +257,68 @@ export async function POST(request: NextRequest) {
             batches.push(allSummaries.slice(i, i + BATCH_SIZE));
           }
 
-          send({ phase: "llm-batches", totalBatches: batches.length, message: `AI: ${batches.length} parallel batches of ~${BATCH_SIZE}...` });
+          // Try primary model, then fallbacks on 404
+          let activeModel = model;
+          const fallbacks = getLLMModelFallbacks();
+
+          send({ phase: "llm-batches", totalBatches: batches.length, message: `AI: ${batches.length} parallel batches of ~${BATCH_SIZE} with ${activeModel}...` });
 
           let classifications: DimensionalClassification[] = [];
           try {
-            // Run all batches in parallel
-            const batchResults = await Promise.all(
-              batches.map((batch) =>
-                classifyWithLLM(client, model, batch, bucketDefs, ruleHints, ruleReasons)
-                  .catch((e) => {
-                    console.warn(`[CLASSIFY] Batch failed:`, (e as Error).message);
-                    return [] as DimensionalClassification[];
-                  })
-              )
-            );
-            classifications = batchResults.flat();
+            // Test with first batch to detect 404 model errors
+            const testResult = await classifyWithLLM(client, activeModel, batches[0], bucketDefs, ruleHints, ruleReasons);
+
+            // First batch succeeded — run remaining batches in parallel
+            const remainingResults = batches.length > 1
+              ? await Promise.all(
+                  batches.slice(1).map((batch) =>
+                    classifyWithLLM(client, activeModel, batch, bucketDefs, ruleHints, ruleReasons)
+                      .catch((e) => {
+                        console.warn(`[CLASSIFY] Batch failed:`, (e as Error).message);
+                        return [] as DimensionalClassification[];
+                      })
+                  )
+                )
+              : [];
+            classifications = [testResult, ...remainingResults].flat();
           } catch (e) {
             const msg = (e as Error).message || "";
+            console.warn(`[CLASSIFY] Primary model ${activeModel} failed: ${msg}`);
 
-            if (msg.includes("insufficient_quota") || msg.includes("billing")) {
+            // On 404, try fallback models
+            if (msg.includes("404")) {
+              let resolved = false;
+              for (const fb of fallbacks) {
+                try {
+                  console.log(`[CLASSIFY] Trying fallback model: ${fb}`);
+                  send({ phase: "llm-fallback", model: fb, message: `Model ${activeModel} unavailable, trying ${fb}...` });
+                  const testResult = await classifyWithLLM(client, fb, batches[0], bucketDefs, ruleHints, ruleReasons);
+                  activeModel = fb;
+
+                  const remainingResults = batches.length > 1
+                    ? await Promise.all(
+                        batches.slice(1).map((batch) =>
+                          classifyWithLLM(client, activeModel, batch, bucketDefs, ruleHints, ruleReasons)
+                            .catch((err) => {
+                              console.warn(`[CLASSIFY] Batch failed:`, (err as Error).message);
+                              return [] as DimensionalClassification[];
+                            })
+                        )
+                      )
+                    : [];
+                  classifications = [testResult, ...remainingResults].flat();
+                  resolved = true;
+                  console.log(`[CLASSIFY] Fallback model ${fb} succeeded`);
+                  break;
+                } catch (fbErr) {
+                  console.warn(`[CLASSIFY] Fallback ${fb} failed:`, (fbErr as Error).message);
+                }
+              }
+              if (!resolved) {
+                aiError = `All models failed (tried ${activeModel}, ${fallbacks.join(", ")})`;
+                llmAborted = true;
+              }
+            } else if (msg.includes("insufficient_quota") || msg.includes("billing")) {
               aiError = "Credits exhausted";
               llmAborted = true;
             } else if (msg.includes("invalid_api_key") || msg.includes("401")) {

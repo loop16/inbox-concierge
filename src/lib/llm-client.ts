@@ -36,12 +36,17 @@ const _isGemini = !!(process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY
 // Fast model for bulk classification
 export function getLLMModel(): string {
   if (process.env.LLM_MODEL) return process.env.LLM_MODEL;
-  // Only use OPENAI_MODEL if we're actually using OpenAI, not Gemini
   if (!_isGemini && process.env.OPENAI_MODEL) return process.env.OPENAI_MODEL;
-  return _isGemini ? "gemini-2.0-flash" : "gpt-4o-mini";
+  return _isGemini ? "gemini-2.5-flash-lite" : "gpt-4o-mini";
 }
 
-// Smart model for analysis tasks (bucket suggestions, pattern discovery)
+// Fallback models to try if the primary fast model 404s
+export function getLLMModelFallbacks(): string[] {
+  if (!_isGemini) return [];
+  return ["gemini-2.0-flash-001", "gemini-2.0-flash"];
+}
+
+// Smart model for reasoning tasks (bucket suggestions, summarize, pattern discovery)
 export function getSmartModel(): string {
   if (process.env.LLM_SMART_MODEL) return process.env.LLM_SMART_MODEL;
   return _isGemini ? "gemini-2.5-flash" : "gpt-4o";
