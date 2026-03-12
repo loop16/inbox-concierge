@@ -97,6 +97,11 @@ PIPELINE:
 2. UNCLASSIFIED emails have no rule match. Classify these from scratch based on subject, sender, and preview.
 3. Emails with "hasUnsubscribe": true have an unsubscribe header — strong signal for newsletters/marketing/auto-archive.
 
+CLASSIFICATION HINTS:
+- Receipts, ride summaries (Lyft, Uber), order confirmations, payment notifications, invoices, billing, subscription charges → "Finance / Receipts"
+- Marketing emails, bulk newsletters, promotional offers → "Newsletters"
+- Emails requiring a response or action from the user → "Action Required" or "Important"
+
 RULES:
 - Use bucket names EXACTLY as written (case-sensitive)
 - confidence: 0.0-1.0

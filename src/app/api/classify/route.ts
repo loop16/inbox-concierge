@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
           phase: "rules",
           processed,
           total: threads.length,
-          rulesCaught: senderRuleCount,
+          rulesCaught: senderRuleCount + rulesSuggested,
           senderRules: senderRuleCount,
           rulesSuggested,
           autoDetect: 0, keywords: 0, customMatch: 0, labels: 0,
