@@ -46,7 +46,6 @@ export async function classifyWithLLM(
   threads: ThreadSummary[],
   buckets: BucketDef[],
   ruleHints?: Map<string, string>,
-  ruleReasons?: Map<string, string>,
 ): Promise<DimensionalClassification[]> {
   const trimmedThreads = threads.map((t) => {
     const entry: Record<string, string | boolean> = {
@@ -58,12 +57,10 @@ export async function classifyWithLLM(
     if (t.hasUnsubscribe) {
       entry.hasUnsubscribe = true;
     }
-    // Include rule suggestion for AI to verify
+    // Include rule suggestion as a hint for AI to confirm or override
     const hint = ruleHints?.get(t.id);
     if (hint) {
       entry.suggested = hint;
-      const reason = ruleReasons?.get(t.id);
-      if (reason) entry.ruleReason = reason;
     }
     return entry;
   });
@@ -75,35 +72,25 @@ export async function classifyWithLLM(
     return desc;
   }).join("\n");
 
-  // Split threads into rule-matched and unmatched for clearer AI instructions
-  const ruleMatched = trimmedThreads.filter((t) => t.suggested);
-  const unmatched = trimmedThreads.filter((t) => !t.suggested);
+  const prompt = `You are an email classifier. The user has defined these buckets to organize their inbox. Each bucket's name, description, and examples define EXACTLY what belongs in it.
 
-  let emailSection = "";
-  if (ruleMatched.length > 0) {
-    emailSection += `RULE-MATCHED EMAILS (${ruleMatched.length}) — these were pre-classified by rules. KEEP the suggested bucket UNLESS it is obviously wrong:\n${JSON.stringify(ruleMatched)}\n\n`;
-  }
-  if (unmatched.length > 0) {
-    emailSection += `UNCLASSIFIED EMAILS (${unmatched.length}) — classify these from scratch:\n${JSON.stringify(unmatched)}`;
-  }
-
-  const prompt = `You are an email classifier. Classify emails into the user's buckets.
-
-BUCKETS (the ONLY valid categories):
+BUCKETS (these are the ONLY valid categories):
 ${bucketList}
 
-PIPELINE:
-1. RULE-MATCHED emails have a "suggested" bucket from our rule engine. These rules matched based on keywords, sender patterns, or Gmail labels. You MUST keep the suggested bucket UNLESS it is clearly wrong (e.g. a personal email suggested as "Newsletters"). When keeping it, set confidence to 0.9+.
-2. UNCLASSIFIED emails have no rule match. Classify these from scratch based on subject, sender, and preview.
-3. Emails with "hasUnsubscribe": true have an unsubscribe header — strong signal for newsletters/marketing/auto-archive.
-
-RULES:
-- Use bucket names EXACTLY as written (case-sensitive)
-- confidence: 0.0-1.0
+INSTRUCTIONS:
+- Read each email's subject, sender, and preview carefully
+- Match each email to the bucket whose description and examples best fit the email's content
+- The bucket descriptions are the rules — if a bucket says "school related emails" then school emails go there
+- Some emails have a "suggested" field — this is a quick rule-based guess. Confirm it if correct, or override it with the right bucket
+- Emails with "hasUnsubscribe": true have an unsubscribe header — this is a strong signal for newsletters, marketing, or auto-archive buckets
+- Use the bucket name EXACTLY as written (case-sensitive)
+- If an email doesn't clearly fit any specific bucket, put it in the most general/catch-all bucket
+- Do NOT force emails into wrong buckets — accuracy matters more than specificity
+- confidence: 0.0-1.0 (how well the email matches the bucket's description)
 - reason: brief explanation (10 words max)
-- If unsure, use the most general/catch-all bucket
 
-${emailSection}
+Emails to classify:
+${JSON.stringify(trimmedThreads)}
 
 Respond with a JSON array ONLY. No markdown, no backticks:
 [{"threadId":"...","bucket":"exact bucket name","confidence":0.9,"reason":"..."}]`;

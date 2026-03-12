@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         let aiAvailable = true;
         let aiError: string | null = null;
 
-        const forAI: { thread: typeof threads[0]; ruleSuggestion: string | null; ruleReason: string | null }[] = [];
+        const forAI: { thread: typeof threads[0]; ruleSuggestion: string | null }[] = [];
         const senderRuleUpdates: { id: string; bucketId: string; confidence: number; reason: string }[] = [];
         const ruleMatchIncrements = new Map<string, number>();
 
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
           if (match) {
             rulesSuggested++;
           }
-          forAI.push({ thread, ruleSuggestion: match ? match.bucketName : null, ruleReason: match ? match.reason : null });
+          forAI.push({ thread, ruleSuggestion: match ? match.bucketName : null });
         }
 
         send({
@@ -219,7 +219,6 @@ export async function POST(request: NextRequest) {
         // Build threads for AI, including rule suggestions as hints
         const needsLLM = forAI.map((item) => item.thread);
         const ruleHints = new Map(forAI.filter((item) => item.ruleSuggestion).map((item) => [item.thread.id, item.ruleSuggestion!]));
-        const ruleReasons = new Map(forAI.filter((item) => item.ruleReason).map((item) => [item.thread.id, item.ruleReason!]));
 
         if (client && needsLLM.length > 0) {
           const bucketDefs: BucketDef[] = buckets.map((b) => ({
@@ -252,7 +251,7 @@ export async function POST(request: NextRequest) {
 
           let classifications: DimensionalClassification[] = [];
           try {
-            classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints, ruleReasons);
+            classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
           } catch (e) {
             const msg = (e as Error).message || "";
 
@@ -266,7 +265,7 @@ export async function POST(request: NextRequest) {
               // Transient error — retry once
               console.warn(`LLM failed, retrying:`, msg);
               try {
-                classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints, ruleReasons);
+                classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
               } catch {
                 failed += needsLLM.length;
               }

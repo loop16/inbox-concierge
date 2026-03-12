@@ -295,15 +295,6 @@ function matchKeywordRules(
     }
   }
 
-  // Calendar/meeting keywords
-  for (const kw of CALENDAR_SUBJECT_KEYWORDS) {
-    if (subjectLower.includes(kw)) {
-      const bucket = findBucket(bucketByName, "Action Required", "Important");
-      if (bucket) return result(bucket, `Calendar: "${kw}"`, 0.78, "keyword");
-      break;
-    }
-  }
-
   return null;
 }
 
@@ -357,7 +348,7 @@ function matchCustomBuckets(
     }
   }
 
-  if (bestMatch && bestMatch.hits >= 1) {
+  if (bestMatch && bestMatch.hits >= 2) {
     return result(
       bestMatch.bucket,
       `Custom match: "${bestMatch.keyword}"${bestMatch.hits > 1 ? ` (+${bestMatch.hits - 1} more)` : ""}`,
