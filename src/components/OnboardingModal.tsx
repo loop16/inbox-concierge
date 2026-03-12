@@ -2,7 +2,7 @@
 
 import { useAppStore } from "@/lib/store";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { startAnimation } from "./CinematicLoader";
 
 interface SuggestedBucket {
@@ -26,7 +26,8 @@ export default function OnboardingModal() {
   const animCleanupRef = useRef<(() => void) | null>(null);
 
   // Ref callback — fires the instant the canvas enters/leaves the DOM
-  const canvasCallback = (el: HTMLCanvasElement | null) => {
+  // Wrapped in useCallback so React doesn't re-call it on every render
+  const canvasCallback = useCallback((el: HTMLCanvasElement | null) => {
     if (el) {
       const dpr = window.devicePixelRatio || 1;
       el.width = 440 * dpr;
@@ -37,7 +38,7 @@ export default function OnboardingModal() {
       animCleanupRef.current?.();
       animCleanupRef.current = null;
     }
-  };
+  }, []);
 
   const fetchSuggestions = async () => {
     setStep("loading");
