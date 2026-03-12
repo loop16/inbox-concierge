@@ -172,8 +172,8 @@ function startAnimation(
   const staggers = buildStaggers(formations);
   const numFormations = formations.length;
 
-  const holdTime = 2.0;
-  const transitionTime = 1.7;
+  const holdTime = 1.0;
+  const transitionTime = 1.0;
   const phaseLength = holdTime + transitionTime;
   const totalDuration = numFormations * phaseLength;
 
@@ -187,17 +187,30 @@ function startAnimation(
   const startTime = performance.now();
   let rafId = 0;
 
-  const resize = () => {
-    const { w, h } = getSize();
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
+  let lastW = 0;
+  let lastH = 0;
+  const resize = (w: number, h: number) => {
+    if (w !== lastW || h !== lastH) {
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      lastW = w;
+      lastH = h;
+    }
   };
-  resize();
-  window.addEventListener("resize", resize);
+  const { w: initW, h: initH } = getSize();
+  resize(initW, initH);
+  const onWindowResize = () => {
+    const { w, h } = getSize();
+    resize(w, h);
+  };
+  window.addEventListener("resize", onWindowResize);
 
   const animate = (now: number) => {
     const elapsed = (now - startTime) / 1000;
     const { w, h } = getSize();
+
+    // Update canvas buffer when container size changes
+    resize(w, h);
 
     if (w === 0 || h === 0) {
       rafId = requestAnimationFrame(animate);
@@ -293,7 +306,7 @@ function startAnimation(
 
   return () => {
     cancelAnimationFrame(rafId);
-    window.removeEventListener("resize", resize);
+    window.removeEventListener("resize", onWindowResize);
   };
 }
 
@@ -340,9 +353,14 @@ function InlineCinematicLoader({
       return { w: rect.width, h: rect.height };
     };
 
-    cleanupRef.current = startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
+    // Defer start by one frame so browser lays out the container
+    // after it transitions from display:none to display:flex
+    const deferRaf = requestAnimationFrame(() => {
+      cleanupRef.current = startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
+    });
 
     return () => {
+      cancelAnimationFrame(deferRaf);
       cleanupRef.current?.();
       cleanupRef.current = null;
     };
