@@ -188,19 +188,16 @@ export default function OnboardingModal() {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Inline cinematic animation — always mounted, controlled by isLoading */}
-          <CinematicLoader
-            isLoading={cinematicActive}
-            inline
-            dotCount={80}
-            message={
-              cinematicActive
-                ? step === "loading"
-                  ? "Analyzing your inbox"
-                  : applyStatus
-                : undefined
-            }
-          />
+          {/* Inline cinematic animation — mounted only during loading/applying */}
+          {cinematicActive && (
+            <CinematicLoader
+              key={step}
+              isLoading={true}
+              inline
+              dotCount={80}
+              message={step === "loading" ? "Analyzing your inbox" : applyStatus}
+            />
+          )}
 
           {/* Error */}
           {step === "error" && (

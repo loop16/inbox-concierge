@@ -313,8 +313,8 @@ function startAnimation(
 // ─── Inline Component ───
 // Always stays mounted. Starts/stops animation based on isLoading prop.
 
+// Inline mode: mount = animate, unmount = stop. No toggling.
 function InlineCinematicLoader({
-  isLoading,
   message,
   color = "#f59e0b",
   backgroundColor,
@@ -323,27 +323,10 @@ function InlineCinematicLoader({
 }: CinematicLoaderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
 
   const bg = (!backgroundColor || backgroundColor === "#000000") ? "#ffffff" : backgroundColor;
 
   useEffect(() => {
-    if (!isLoading) {
-      // Stop animation and clear canvas
-      cleanupRef.current?.();
-      cleanupRef.current = null;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const dpr = window.devicePixelRatio || 1;
-          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-      return;
-    }
-
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
@@ -353,24 +336,22 @@ function InlineCinematicLoader({
       return { w: rect.width, h: rect.height };
     };
 
-    // Defer start by one frame so browser lays out the container
-    // after it transitions from display:none to display:flex
-    const deferRaf = requestAnimationFrame(() => {
-      cleanupRef.current = startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
+    // Defer by one frame to ensure layout is settled after mount
+    let cleanup: (() => void) | null = null;
+    const raf = requestAnimationFrame(() => {
+      cleanup = startAnimation(canvas, getSize, dotCount, color, bg, true, progress);
     });
 
     return () => {
-      cancelAnimationFrame(deferRaf);
-      cleanupRef.current?.();
-      cleanupRef.current = null;
+      cancelAnimationFrame(raf);
+      cleanup?.();
     };
-  }, [isLoading, dotCount, color, bg, progress]);
+  }, [dotCount, color, bg, progress]);
 
   return (
     <div
       ref={containerRef}
       className="relative z-10 w-full flex flex-col items-center"
-      style={{ display: isLoading ? "flex" : "none" }}
     >
       <canvas
         ref={canvasRef}
