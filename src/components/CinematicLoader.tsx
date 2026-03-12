@@ -214,8 +214,10 @@ export default function CinematicLoader({
 
   const bg = inline ? (backgroundColor === "#000000" ? "#ffffff" : backgroundColor) : backgroundColor;
 
-  // Fade in when isLoading becomes true, fade out when false
+  // Inline mode: always visible when mounted (parent controls mounting)
+  // Overlay mode: fade in/out with visibility state
   useEffect(() => {
+    if (inline) return; // inline skips this
     if (isLoading) {
       wasLoadingRef.current = true;
       setVisible(true);
@@ -230,11 +232,12 @@ export default function CinematicLoader({
       }, 800);
       return () => clearTimeout(timer);
     }
-  }, [isLoading, onRevealComplete]);
+  }, [isLoading, onRevealComplete, inline]);
 
   // Main animation
+  const shouldAnimate = inline || visible;
   useEffect(() => {
-    if (!visible) return;
+    if (!shouldAnimate) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -255,10 +258,10 @@ export default function CinematicLoader({
     const staggerSpread = 0.55;
     const dotTransFrac = 1 - staggerSpread;
 
-    // Dot radii — 2x for inline mode
-    const radiusBase = inline ? 2.8 : 2.8;
-    const radiusRange = inline ? 1.2 : 1.2;
-    const baseRadii = Array.from({ length: dotCount }, () => radiusBase + Math.random() * radiusRange);
+    // Dot radii
+    const baseRadii = Array.from({ length: dotCount }, () => 2.8 + Math.random() * 1.2);
+    // Per-dot phase offsets for size pulsing
+    const pulsePhases = Array.from({ length: dotCount }, () => Math.random() * Math.PI * 2);
 
     // Resize handler
     const resize = () => {
@@ -378,15 +381,16 @@ export default function CinematicLoader({
           x = cx;
           y = cy;
           scale = cScale;
-
-          // no-op
         }
 
         if (scale < 0.02) continue;
 
+        // Per-dot size pulsing
+        const pulse = 0.75 + Math.sin(elapsed * 2.2 + pulsePhases[i]) * 0.25;
+
         const px = offsetX + x * shapeScale;
         const py = offsetY + y * shapeScale;
-        const r = baseRadii[i] * dotSizeScale * scale;
+        const r = baseRadii[i] * dotSizeScale * scale * pulse;
 
         ctx.beginPath();
         ctx.arc(px, py, r, 0, Math.PI * 2);
@@ -402,9 +406,9 @@ export default function CinematicLoader({
       cancelAnimationFrame(animRef.current);
       window.removeEventListener("resize", resize);
     };
-  }, [visible, dotCount, color, bg, duration, progress, inline]);
+  }, [shouldAnimate, dotCount, color, bg, duration, progress, inline]);
 
-  if (!visible) return null;
+  if (!inline && !visible) return null;
 
   // Inline mode: render inside parent container
   if (inline) {
@@ -412,7 +416,6 @@ export default function CinematicLoader({
       <div
         ref={containerRef}
         className="relative z-10 w-full flex flex-col items-center"
-        style={{ opacity, transition: "opacity 0.5s ease-in-out" }}
       >
         <canvas
           ref={canvasRef}
