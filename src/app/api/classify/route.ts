@@ -262,51 +262,106 @@ export async function POST(request: NextRequest) {
 
           send({ phase: "llm-batches", totalBatches: batches.length, message: `AI: ${batches.length} parallel batches of ${BATCH_SIZE} with ${activeModel}...` });
 
-          let classifications: DimensionalClassification[] = [];
+          // Build set of valid thread IDs to filter out hallucinated IDs from LLM
+          const validThreadIds = new Set(threads.map((t) => t.id));
+
+          // Helper: write a batch of classifications to DB immediately
+          const writeBatchResults = async (results: DimensionalClassification[]) => {
+            const updates = results
+              .filter((c) => resolveBucketId(c.bucket) && validThreadIds.has(c.threadId))
+              .map((c) => ({
+                id: c.threadId,
+                bucketId: resolveBucketId(c.bucket)!,
+                confidence: c.confidence,
+                reason: c.reason,
+                aiCategory: c.category,
+                aiActionability: c.actionability,
+                aiUrgency: c.urgency,
+                aiRisk: c.risk,
+                aiSenderType: c.senderType,
+              }));
+
+            const invalidCount = results.filter((c) => !validThreadIds.has(c.threadId) || !resolveBucketId(c.bucket)).length;
+            if (invalidCount > 0) failed += invalidCount;
+
+            for (const u of updates) {
+              try {
+                await prisma.thread.update({
+                  where: { id: u.id },
+                  data: {
+                    bucket: { connect: { id: u.bucketId } },
+                    confidence: u.confidence,
+                    reason: u.reason,
+                    aiCategory: u.aiCategory,
+                    aiActionability: u.aiActionability,
+                    aiUrgency: u.aiUrgency,
+                    aiRisk: u.aiRisk,
+                    aiSenderType: u.aiSenderType,
+                  },
+                });
+                llmBased++;
+              } catch {
+                failed++;
+              }
+            }
+          };
+
+          let batchesCompleted = 0;
 
           // Probe with first batch to catch model errors (404, auth, etc.)
           try {
             const probeResult = await classifyWithLLM(client, activeModel, batches[0], bucketDefs, ruleHints, ruleReasons);
-            // Probe succeeded — run all remaining batches in parallel
-            const failedBatchIndices: number[] = [];
-            const remainingResults = batches.length > 1
-              ? await Promise.all(
-                  batches.slice(1).map((batch, idx) =>
-                    classifyWithLLM(client, activeModel, batch, bucketDefs, ruleHints, ruleReasons)
-                      .catch((e) => {
-                        console.warn(`[CLASSIFY] Batch ${idx + 1} failed:`, (e as Error).message);
-                        failedBatchIndices.push(idx + 1);
-                        return [] as DimensionalClassification[];
-                      })
-                  )
-                )
-              : [];
-            classifications = [probeResult, ...remainingResults].flat();
 
-            // Retry failed batches up to 2 times
-            for (let attempt = 0; attempt < 2 && failedBatchIndices.length > 0; attempt++) {
-              send({ phase: "llm-retry", attempt: attempt + 1, retrying: failedBatchIndices.length, message: `Retrying ${failedBatchIndices.length} failed batch(es)...` });
-              const stillFailed: number[] = [];
-              const retryResults = await Promise.all(
-                [...failedBatchIndices].map((batchIdx) =>
-                  classifyWithLLM(client, activeModel, batches[batchIdx], bucketDefs, ruleHints, ruleReasons)
-                    .catch((e) => {
+            // Write probe results immediately
+            await writeBatchResults(probeResult);
+            batchesCompleted++;
+            processed += batches[0].length;
+            send({ phase: "llm-progress", processed, total: threads.length, batchesCompleted, totalBatches: batches.length, llmBased, failed });
+
+            if (batches.length > 1) {
+              // Fire all remaining batches in parallel, write results as each completes
+              const failedBatchIndices: number[] = [];
+
+              await Promise.all(
+                batches.slice(1).map(async (batch, idx) => {
+                  try {
+                    const result = await classifyWithLLM(client, activeModel, batch, bucketDefs, ruleHints, ruleReasons);
+                    await writeBatchResults(result);
+                  } catch (e) {
+                    console.warn(`[CLASSIFY] Batch ${idx + 1} failed:`, (e as Error).message);
+                    failedBatchIndices.push(idx + 1);
+                  }
+                  batchesCompleted++;
+                  processed += batch.length;
+                  send({ phase: "llm-progress", processed, total: threads.length, batchesCompleted, totalBatches: batches.length, llmBased, failed });
+                })
+              );
+
+              // Retry failed batches up to 2 times
+              for (let attempt = 0; attempt < 2 && failedBatchIndices.length > 0; attempt++) {
+                send({ phase: "llm-retry", attempt: attempt + 1, retrying: failedBatchIndices.length, message: `Retrying ${failedBatchIndices.length} failed batch(es)...` });
+                const stillFailed: number[] = [];
+                await Promise.all(
+                  [...failedBatchIndices].map(async (batchIdx) => {
+                    try {
+                      const result = await classifyWithLLM(client, activeModel, batches[batchIdx], bucketDefs, ruleHints, ruleReasons);
+                      await writeBatchResults(result);
+                      send({ phase: "llm-progress", processed, total: threads.length, batchesCompleted, totalBatches: batches.length, llmBased, failed });
+                    } catch (e) {
                       console.warn(`[CLASSIFY] Retry ${attempt + 1} batch ${batchIdx} failed:`, (e as Error).message);
                       stillFailed.push(batchIdx);
-                      return [] as DimensionalClassification[];
-                    })
-                )
-              );
-              for (const result of retryResults) {
-                if (result.length > 0) classifications.push(...result);
+                    }
+                  })
+                );
+                failedBatchIndices.length = 0;
+                failedBatchIndices.push(...stillFailed);
               }
-              failedBatchIndices.length = 0;
-              failedBatchIndices.push(...stillFailed);
-            }
 
-            if (failedBatchIndices.length > 0) {
-              const failedCount = failedBatchIndices.reduce((sum, idx) => sum + batches[idx].length, 0);
-              console.warn(`[CLASSIFY] ${failedBatchIndices.length} batch(es) failed after retries (${failedCount} threads)`);
+              if (failedBatchIndices.length > 0) {
+                const failedCount = failedBatchIndices.reduce((sum, idx) => sum + batches[idx].length, 0);
+                failed += failedCount;
+                console.warn(`[CLASSIFY] ${failedBatchIndices.length} batch(es) failed after retries (${failedCount} threads)`);
+              }
             }
           } catch (e) {
             const msg = (e as Error).message || "";
@@ -319,17 +374,19 @@ export async function POST(request: NextRequest) {
                 try {
                   console.log(`[CLASSIFY] Trying fallback: ${fb}`);
                   send({ phase: "llm-fallback", model: fb, message: `Trying ${fb}...` });
-                  // Run ALL batches with fallback model in parallel
-                  const allResults = await Promise.all(
-                    batches.map((batch) =>
-                      classifyWithLLM(client, fb, batch, bucketDefs, ruleHints, ruleReasons)
-                        .catch((err) => {
-                          console.warn(`[CLASSIFY] Fallback batch failed:`, (err as Error).message);
-                          return [] as DimensionalClassification[];
-                        })
-                    )
+                  await Promise.all(
+                    batches.map(async (batch) => {
+                      try {
+                        const result = await classifyWithLLM(client, fb, batch, bucketDefs, ruleHints, ruleReasons);
+                        await writeBatchResults(result);
+                      } catch (err) {
+                        console.warn(`[CLASSIFY] Fallback batch failed:`, (err as Error).message);
+                      }
+                      batchesCompleted++;
+                      processed += batch.length;
+                      send({ phase: "llm-progress", processed, total: threads.length, batchesCompleted, totalBatches: batches.length, llmBased, failed });
+                    })
                   );
-                  classifications = allResults.flat();
                   activeModel = fb;
                   resolved = true;
                   break;
@@ -351,90 +408,6 @@ export async function POST(request: NextRequest) {
               failed += needsLLM.length;
             }
           }
-
-          type LLMUpdate = { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string };
-          let updates: LLMUpdate[] = [];
-
-          // Build set of valid thread IDs to filter out hallucinated IDs from LLM
-          const validThreadIds = new Set(threads.map((t) => t.id));
-
-          if (!llmAborted && classifications.length > 0) {
-            updates = classifications
-              .filter((c) => resolveBucketId(c.bucket) && validThreadIds.has(c.threadId))
-              .map((c) => ({
-                id: c.threadId,
-                bucketId: resolveBucketId(c.bucket)!,
-                confidence: c.confidence,
-                reason: c.reason,
-                aiCategory: c.category,
-                aiActionability: c.actionability,
-                aiUrgency: c.urgency,
-                aiRisk: c.risk,
-                aiSenderType: c.senderType,
-              }));
-
-            const invalidIds = classifications.filter((c) => !validThreadIds.has(c.threadId)).length;
-            const unmatchedBuckets = classifications.filter((c) => validThreadIds.has(c.threadId) && !resolveBucketId(c.bucket)).length;
-            failed += invalidIds + unmatchedBuckets;
-            if (invalidIds > 0) console.warn(`[CLASSIFY] ${invalidIds} classifications had invalid thread IDs`);
-            if (unmatchedBuckets > 0) console.warn(`[CLASSIFY] ${unmatchedBuckets} classifications had no matching bucket`);
-
-            llmBased = updates.length;
-
-            // Write in chunks to avoid single failed update killing everything
-            const WRITE_CHUNK = 25;
-            for (let i = 0; i < updates.length; i += WRITE_CHUNK) {
-              const chunk = updates.slice(i, i + WRITE_CHUNK);
-              try {
-                await prisma.$transaction(
-                  chunk.map((u) =>
-                    prisma.thread.update({
-                      where: { id: u.id },
-                      data: {
-                        bucket: { connect: { id: u.bucketId } },
-                        confidence: u.confidence,
-                        reason: u.reason,
-                        aiCategory: u.aiCategory,
-                        aiActionability: u.aiActionability,
-                        aiUrgency: u.aiUrgency,
-                        aiRisk: u.aiRisk,
-                        aiSenderType: u.aiSenderType,
-                      },
-                    })
-                  )
-                );
-              } catch (txErr) {
-                console.warn(`[CLASSIFY] DB write chunk failed, falling back to individual updates:`, (txErr as Error).message);
-                for (const u of chunk) {
-                  try {
-                    await prisma.thread.update({
-                      where: { id: u.id },
-                      data: {
-                        bucket: { connect: { id: u.bucketId } },
-                        confidence: u.confidence,
-                        reason: u.reason,
-                      },
-                    });
-                  } catch {
-                    failed++;
-                    llmBased--;
-                  }
-                }
-              }
-            }
-          }
-
-          processed += needsLLM.length;
-
-          send({
-            phase: "llm-progress",
-            processed,
-            total: threads.length,
-            batchesCompleted: 1,
-            totalBatches: 1,
-            llmBased,
-            failed,
-          });
 
           if (llmAborted) {
             aiAvailable = false;
