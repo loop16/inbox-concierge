@@ -360,11 +360,11 @@ export default function SettingsPage() {
         )}
       </section>
 
-      {/* ═══ AI BUCKET SETUP ═══ */}
+      {/* ═══ AI PROVIDER ═══ */}
       <section>
-        <h2 className="text-2xl font-bold text-stone-900 mb-1">AI Bucket Setup</h2>
+        <h2 className="text-2xl font-bold text-stone-900 mb-1">AI Provider</h2>
         <p className="text-sm text-stone-500 mb-4">
-          Let AI analyze your emails and suggest personalized buckets. This replaces your current buckets.
+          Classification uses Gemini 2.5 Flash via Google AI. Set <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded font-mono">GOOGLE_AI_API_KEY</code> in your environment. Falls back to OpenAI if <code className="text-xs bg-stone-100 px-1.5 py-0.5 rounded font-mono">OPENAI_API_KEY</code> is set instead.
         </p>
         <button
           onClick={() => setOnboardingOpen(true)}
@@ -373,7 +373,7 @@ export default function SettingsPage() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
-          Suggest Buckets with AI
+          Run Smart Setup
         </button>
       </section>
 
