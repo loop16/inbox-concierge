@@ -241,8 +241,8 @@ export async function POST(request: NextRequest) {
 
           let llmAborted = false;
 
-          // Split into parallel batches of 50 for speed
-          const BATCH_SIZE = 50;
+          // Small batches with high parallelism for speed
+          const BATCH_SIZE = 20;
           const allSummaries: ThreadSummary[] = needsLLM.map((t) => ({
             id: t.id,
             subject: t.subject,
@@ -257,18 +257,17 @@ export async function POST(request: NextRequest) {
             batches.push(allSummaries.slice(i, i + BATCH_SIZE));
           }
 
-          // Try primary model, then fallbacks on 404
           let activeModel = model;
           const fallbacks = getLLMModelFallbacks();
 
-          send({ phase: "llm-batches", totalBatches: batches.length, message: `AI: ${batches.length} parallel batches of ~${BATCH_SIZE} with ${activeModel}...` });
+          send({ phase: "llm-batches", totalBatches: batches.length, message: `AI: ${batches.length} parallel batches of ${BATCH_SIZE} with ${activeModel}...` });
 
           let classifications: DimensionalClassification[] = [];
-          try {
-            // Test with first batch to detect 404 model errors
-            const testResult = await classifyWithLLM(client, activeModel, batches[0], bucketDefs, ruleHints, ruleReasons);
 
-            // First batch succeeded — run remaining batches in parallel
+          // Probe with first batch to catch model errors (404, auth, etc.)
+          try {
+            const probeResult = await classifyWithLLM(client, activeModel, batches[0], bucketDefs, ruleHints, ruleReasons);
+            // Probe succeeded — run all remaining batches in parallel
             const remainingResults = batches.length > 1
               ? await Promise.all(
                   batches.slice(1).map((batch) =>
@@ -280,42 +279,38 @@ export async function POST(request: NextRequest) {
                   )
                 )
               : [];
-            classifications = [testResult, ...remainingResults].flat();
+            classifications = [probeResult, ...remainingResults].flat();
           } catch (e) {
             const msg = (e as Error).message || "";
-            console.warn(`[CLASSIFY] Primary model ${activeModel} failed: ${msg}`);
+            console.warn(`[CLASSIFY] Model ${activeModel} failed: ${msg}`);
 
-            // On 404, try fallback models
             if (msg.includes("404")) {
+              // Model not found — try fallbacks
               let resolved = false;
               for (const fb of fallbacks) {
                 try {
-                  console.log(`[CLASSIFY] Trying fallback model: ${fb}`);
-                  send({ phase: "llm-fallback", model: fb, message: `Model ${activeModel} unavailable, trying ${fb}...` });
-                  const testResult = await classifyWithLLM(client, fb, batches[0], bucketDefs, ruleHints, ruleReasons);
+                  console.log(`[CLASSIFY] Trying fallback: ${fb}`);
+                  send({ phase: "llm-fallback", model: fb, message: `Trying ${fb}...` });
+                  // Run ALL batches with fallback model in parallel
+                  const allResults = await Promise.all(
+                    batches.map((batch) =>
+                      classifyWithLLM(client, fb, batch, bucketDefs, ruleHints, ruleReasons)
+                        .catch((err) => {
+                          console.warn(`[CLASSIFY] Fallback batch failed:`, (err as Error).message);
+                          return [] as DimensionalClassification[];
+                        })
+                    )
+                  );
+                  classifications = allResults.flat();
                   activeModel = fb;
-
-                  const remainingResults = batches.length > 1
-                    ? await Promise.all(
-                        batches.slice(1).map((batch) =>
-                          classifyWithLLM(client, activeModel, batch, bucketDefs, ruleHints, ruleReasons)
-                            .catch((err) => {
-                              console.warn(`[CLASSIFY] Batch failed:`, (err as Error).message);
-                              return [] as DimensionalClassification[];
-                            })
-                        )
-                      )
-                    : [];
-                  classifications = [testResult, ...remainingResults].flat();
                   resolved = true;
-                  console.log(`[CLASSIFY] Fallback model ${fb} succeeded`);
                   break;
                 } catch (fbErr) {
                   console.warn(`[CLASSIFY] Fallback ${fb} failed:`, (fbErr as Error).message);
                 }
               }
               if (!resolved) {
-                aiError = `All models failed (tried ${activeModel}, ${fallbacks.join(", ")})`;
+                aiError = `All models failed (${activeModel}, ${fallbacks.join(", ")})`;
                 llmAborted = true;
               }
             } else if (msg.includes("insufficient_quota") || msg.includes("billing")) {

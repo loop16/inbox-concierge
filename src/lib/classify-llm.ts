@@ -69,22 +69,26 @@ export async function classifyWithLLM(
     return line;
   }).join("\n");
 
-  const prompt = `Classify each email into EXACTLY one of these buckets. You MUST use the exact bucket name as shown in quotes:
+  const prompt = `Classify each email into EXACTLY one of these buckets:
 
 ${bucketLines}
 
-Rules:
-- If an email has "suggested", keep that bucket unless clearly wrong.
-- If "unsub" is true, it's likely a newsletter or marketing email.
-- Receipts, orders, ride summaries, invoices, payments → "Finance / Receipts"
-- Every email MUST be classified into one of the buckets above.
-- Use the EXACT bucket name string including spaces and slashes.
+STRICT RULES (follow these carefully):
+- "Finance / Receipts" is ONLY for actual charges, bills, invoices, payment confirmations, receipts, subscription renewals, refunds, bank statements. NOT for account notifications, marketing, or promotional emails from financial platforms.
+- "Action Required" is ONLY for emails where YOU personally must take a specific action (reply, sign, approve, verify identity, pay). NOT for marketing urgency like "sale ending soon" or "don't miss out". Safety warnings and promotional urgency are NOT action required.
+- "Important" is for personal emails from real humans that need attention. NOT for automated job application confirmations, social media notifications, or marketing.
+- "Recruiting / Job" is for job-related: applications, recruiter outreach, interview scheduling, offer letters, "thanks for applying".
+- Social media notifications (Facebook, Instagram, LinkedIn messages, Twitter) → "Notifications" or "Auto-Archive", NOT "Important".
+- Account welcome emails, API credit top-ups, platform funding notifications → "Finance / Receipts" ONLY if it's an actual charge/payment. If it's just a notification → "Notifications" or "Auto-Archive".
+- If "unsub" is true, it's almost certainly a newsletter or marketing email → "Newsletters".
+- If an email has "suggested", keep that bucket unless clearly wrong based on the rules above.
+- Every email MUST be classified. Use the EXACT bucket name including spaces and slashes.
 
 Emails:
 ${JSON.stringify(trimmed)}
 
 Return JSON: {"results":[{"threadId":"<the id field>","bucket":"<exact bucket name>","confidence":0.9,"reason":"short reason"}]}
-IMPORTANT: threadId must match the "id" field from each email exactly. bucket must be one of the exact names listed above.`;
+threadId must match the "id" field exactly.`;
 
   const t0 = Date.now();
   const response = await client.chat.completions.create({
