@@ -99,7 +99,9 @@ export async function POST(request: NextRequest) {
           return;
         }
 
-        send({ phase: "started", total: threads.length, message: `Processing ${threads.length} threads...` });
+        const model = getLLMModel();
+        const isGemini = !!process.env.GOOGLE_AI_API_KEY || !!process.env.GEMINI_API_KEY;
+        send({ phase: "started", total: threads.length, model, provider: isGemini ? "gemini" : "openai", message: `Processing ${threads.length} threads with ${model}...` });
 
         // ── Pre-build lookup maps (once) ──
         const senderRuleMap = new Map<string, RuleSenderRule>(
@@ -215,7 +217,6 @@ export async function POST(request: NextRequest) {
 
         // ── Phase 2: AI classification with rule hints ──
         const client = getLLMClient();
-        const model = getLLMModel();
         // Build threads for AI, including rule suggestions as hints
         const needsLLM = forAI.map((item) => item.thread);
         const ruleHints = new Map(forAI.filter((item) => item.ruleSuggestion).map((item) => [item.thread.id, item.ruleSuggestion!]));

@@ -121,7 +121,7 @@ export default function InboxLayout({
             if (evt.phase === "loading") {
               setClassifyProgress("Loading...");
             } else if (evt.phase === "started") {
-              setClassifyProgress(`0 / ${evt.total}`);
+              setClassifyProgress(`0 / ${evt.total} — ${evt.model || ""}`);
             } else if (evt.phase === "rules") {
               setClassifyProgress(
                 evt.needsLLM > 0
