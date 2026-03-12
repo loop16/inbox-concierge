@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getLLMClient, getSmartModel } from "@/lib/llm-client";
+import { fetchThreadBody } from "@/lib/gmail";
 
 export async function POST(
   _request: NextRequest,
@@ -28,6 +29,16 @@ export async function POST(
     return NextResponse.json({ error: "No AI provider configured" }, { status: 503 });
   }
 
+  // Fetch full email body from Gmail
+  let emailBody = thread.snippet || "";
+  if (auth.accessToken && thread.gmailThreadId) {
+    try {
+      emailBody = await fetchThreadBody(auth.accessToken, thread.gmailThreadId);
+    } catch (e) {
+      console.warn(`[SUMMARIZE] Failed to fetch full body, using snippet:`, (e as Error).message);
+    }
+  }
+
   const model = getSmartModel();
 
   const response = await client.chat.completions.create({
@@ -43,8 +54,10 @@ export async function POST(
 
 Subject: ${thread.subject}
 From: ${thread.sender} <${thread.senderEmail}>
-Preview: ${thread.snippet}
 ${thread.bucket ? `Bucket: ${thread.bucket.name}` : ""}
+
+Full email body:
+${emailBody}
 
 Return JSON: {"summary":"...","action":"..." or null}`,
       },
