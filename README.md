@@ -296,3 +296,35 @@ src/
 
 - **Classify**: 5 requests/hour per user
 - **Sync**: 10 requests/hour per user
+
+## Build Documentation
+
+The `docs/` folder contains the original planning and specification documents used to build this project:
+
+### Original Spec
+
+- [SPEC.md](docs/SPEC.md) — Full project specification (source of truth)
+- [inbox-concierge-spec.md](docs/inbox-concierge-spec.md) — Initial build spec
+
+### Build Phases
+
+- [Phase 1: Scaffold](docs/phase1-scaffold.md) — Project scaffold, dependencies, database schema, seed
+- [Phase 2: Auth & DB](docs/phase2-auth-db.md) — NextAuth.js with Google OAuth
+- [Phase 3: Gmail Sync](docs/phase3-gmail-sync.md) — Gmail thread sync and storage
+- [Phase 4: UI](docs/phase4-ui.md) — Sidebar, thread list, bucket filtering
+- [Phase 5: Classification](docs/phase5-classification.md) — Rule engine + LLM classification
+- [Phase 6: Polish](docs/phase6-polish.md) — Error handling, loading states, edge cases
+
+### Feature Additions
+
+- [Add IMAP Accounts](docs/add-imap-accounts.md) — Multi-provider email support via IMAP
+- [Add Bucket Learning](docs/add-bucket-learning.md) — Manual reassignment with sender rule learning
+- [Add AI Provider Settings](docs/add-ai-provider-settings.md) — AI provider configuration UI
+- [Optimize Classification](docs/optimize-classification.md) — Speed fixes + rule engine restructuring
+- [Smart Classification](docs/smart-classification.md) — Multi-dimensional output + guardrails
+- [Refactor to OpenAI](docs/refactor-to-openai.md) — Migration from Anthropic to OpenAI SDK
+- [Production Readiness](docs/production-readiness.md) — PostgreSQL, ephemeral data, multi-user
+
+### Development Setup
+
+- [Ralph Loop Setup](docs/ralph-loop-setup.md) — Ralph Wiggum loop development methodology
