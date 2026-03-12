@@ -48,94 +48,64 @@ export async function classifyWithLLM(
   ruleHints?: Map<string, string>,
   ruleReasons?: Map<string, string>,
 ): Promise<DimensionalClassification[]> {
-  const trimmedThreads = threads.map((t) => {
-    const entry: Record<string, string | boolean> = {
-      id: t.id,
-      subject: t.subject.slice(0, 120),
-      from: `${t.sender} <${t.senderEmail}>`,
-      preview: t.snippet.slice(0, 200),
-    };
-    if (t.hasUnsubscribe) {
-      entry.hasUnsubscribe = true;
-    }
-    // Include rule suggestion for AI to verify
+  // Compact thread format: [id, subject, sender, preview, hint?]
+  const compact = threads.map((t) => {
+    const row: (string | boolean)[] = [
+      t.id,
+      t.subject.slice(0, 80),
+      t.senderEmail,
+      t.snippet.slice(0, 100),
+    ];
+    if (t.hasUnsubscribe) row.push(true); // index 4 = unsub
     const hint = ruleHints?.get(t.id);
-    if (hint) {
-      entry.suggested = hint;
-      const reason = ruleReasons?.get(t.id);
-      if (reason) entry.ruleReason = reason;
-    }
-    return entry;
+    if (hint) row.push(hint); // index 4 or 5 = suggested bucket
+    return row;
   });
 
-  const bucketList = buckets.map((b) => {
-    let desc = `- "${b.name}"`;
-    if (b.description) desc += `: ${b.description}`;
-    if (b.examples) desc += ` (e.g. ${b.examples})`;
-    return desc;
-  }).join("\n");
+  const bucketNames = buckets.map((b) => b.name).join(", ");
 
-  // Split threads into rule-matched and unmatched for clearer AI instructions
-  const ruleMatched = trimmedThreads.filter((t) => t.suggested);
-  const unmatched = trimmedThreads.filter((t) => !t.suggested);
+  const prompt = `Classify these emails into buckets: ${bucketNames}
 
-  let emailSection = "";
-  if (ruleMatched.length > 0) {
-    emailSection += `RULE-MATCHED EMAILS (${ruleMatched.length}) — these were pre-classified by rules. KEEP the suggested bucket UNLESS it is obviously wrong:\n${JSON.stringify(ruleMatched)}\n\n`;
-  }
-  if (unmatched.length > 0) {
-    emailSection += `UNCLASSIFIED EMAILS (${unmatched.length}) — classify these from scratch:\n${JSON.stringify(unmatched)}`;
-  }
+Format: [id, subject, sender, preview, unsub?, suggested?]
+Emails with "suggested" = keep that bucket unless clearly wrong.
+unsub=true → likely newsletter/marketing.
+Receipts/orders/rides → "Finance / Receipts"
 
-  const prompt = `You are an email classifier. Classify emails into the user's buckets.
+${JSON.stringify(compact)}
 
-BUCKETS (the ONLY valid categories):
-${bucketList}
+Return JSON: {"r":[{"t":"threadId","b":"bucket","c":0.9,"n":"reason"}]}`;
 
-PIPELINE:
-1. RULE-MATCHED emails have a "suggested" bucket from our rule engine. These rules matched based on keywords, sender patterns, or Gmail labels. You MUST keep the suggested bucket UNLESS it is clearly wrong (e.g. a personal email suggested as "Newsletters"). When keeping it, set confidence to 0.9+.
-2. UNCLASSIFIED emails have no rule match. Classify these from scratch based on subject, sender, and preview.
-3. Emails with "hasUnsubscribe": true have an unsubscribe header — strong signal for newsletters/marketing/auto-archive.
-
-CLASSIFICATION HINTS:
-- Receipts, ride summaries (Lyft, Uber), order confirmations, payment notifications, invoices, billing, subscription charges → "Finance / Receipts"
-- Marketing emails, bulk newsletters, promotional offers → "Newsletters"
-- Emails requiring a response or action from the user → "Action Required" or "Important"
-
-RULES:
-- Use bucket names EXACTLY as written (case-sensitive)
-- confidence: 0.0-1.0
-- reason: brief explanation (10 words max)
-- If unsure, use the most general/catch-all bucket
-
-${emailSection}
-
-Respond with a JSON array ONLY. No markdown, no backticks:
-[{"threadId":"...","bucket":"exact bucket name","confidence":0.9,"reason":"..."}]`;
-
+  const t0 = Date.now();
   const response = await client.chat.completions.create({
     model,
     messages: [
-      {
-        role: "system",
-        content: "You classify emails into user-defined buckets. Always respond with valid JSON only. Never wrap in markdown code blocks.",
-      },
+      { role: "system", content: "Classify emails into buckets. Return JSON only." },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
   });
+  const elapsed = Date.now() - t0;
 
   const text = response.choices[0]?.message?.content || "";
-  console.log(`[LLM] Model: ${model}, response length: ${text.length}, first 200 chars: ${text.slice(0, 200)}`);
+  console.log(`[LLM] ${model} ${threads.length} emails in ${elapsed}ms, ${text.length} chars`);
   const parsed = parseResponse(text);
 
   // Validate bucket names (case-insensitive) and build results
-  const bucketNames = new Set(buckets.map((b) => b.name));
+  const bucketNameSet = new Set(buckets.map((b) => b.name));
   const bucketNamesLower = new Map(buckets.map((b) => [b.name.toLowerCase(), b.name]));
 
-  return parsed
+  // Normalize: support both compact {t,b,c,n} and full {threadId,bucket,confidence,reason}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const normalized: LLMClassificationResult[] = parsed.map((r: any) => ({
+    threadId: (r.t || r.threadId || "") as string,
+    bucket: (r.b || r.bucket || "") as string,
+    confidence: (r.c ?? r.confidence ?? 0.5) as number,
+    reason: (r.n || r.reason || "") as string,
+  }));
+
+  return normalized
     .map((r) => {
-      const exactName = bucketNames.has(r.bucket) ? r.bucket : bucketNamesLower.get(r.bucket.toLowerCase());
+      const exactName = bucketNameSet.has(r.bucket) ? r.bucket : bucketNamesLower.get(r.bucket.toLowerCase());
       if (!exactName) return null;
 
       return {
