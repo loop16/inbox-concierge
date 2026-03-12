@@ -3,7 +3,7 @@
 import { useAppStore } from "@/lib/store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
-import CinematicLoader from "./CinematicLoader";
+import { startAnimation } from "./CinematicLoader";
 
 interface SuggestedBucket {
   name: string;
@@ -23,6 +23,35 @@ export default function OnboardingModal() {
   const [applyStatus, setApplyStatus] = useState("");
 
   const hasFetched = useRef(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animCleanupRef = useRef<(() => void) | null>(null);
+
+  // Start/stop dot animation when entering/leaving "applying" step
+  useEffect(() => {
+    if (step !== "applying") {
+      animCleanupRef.current?.();
+      animCleanupRef.current = null;
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Fixed size — no dynamic measurement needed
+    const getSize = () => ({ w: 440, h: 260 });
+
+    // Set canvas buffer immediately
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = 440 * dpr;
+    canvas.height = 260 * dpr;
+
+    animCleanupRef.current = startAnimation(canvas, getSize, 80, "#f59e0b", "#ffffff", true, undefined);
+
+    return () => {
+      animCleanupRef.current?.();
+      animCleanupRef.current = null;
+    };
+  }, [step]);
 
   const fetchSuggestions = async () => {
     setStep("loading");
@@ -198,14 +227,22 @@ export default function OnboardingModal() {
             </div>
           )}
 
-          {/* Cinematic animation for classification phase */}
+          {/* Dot morph animation for classification phase — canvas rendered directly */}
           {step === "applying" && (
-            <CinematicLoader
-              isLoading={true}
-              inline
-              dotCount={80}
-              message={applyStatus}
-            />
+            <div className="relative z-10 w-full flex flex-col items-center">
+              <canvas
+                ref={canvasRef}
+                style={{ width: 440, height: 260, display: "block", maxWidth: "100%" }}
+              />
+              {applyStatus && (
+                <p
+                  className="text-xs font-medium tracking-[0.15em] uppercase mt-3 text-center"
+                  style={{ color: "#b45309", opacity: 0.8 }}
+                >
+                  {applyStatus}
+                </p>
+              )}
+            </div>
           )}
 
           {/* Error */}

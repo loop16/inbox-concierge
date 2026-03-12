@@ -156,7 +156,7 @@ function buildStaggers(formations: Formation[]): number[][] {
 
 // ─── Shared animation loop ───
 
-function startAnimation(
+export function startAnimation(
   canvas: HTMLCanvasElement,
   getSize: () => { w: number; h: number },
   dotCount: number,
