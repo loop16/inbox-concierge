@@ -111,14 +111,7 @@ const HORSE_POSES = [
   ],
 ];
 
-const COLORS = [
-  "251, 191, 36",   // amber-400
-  "245, 158, 11",   // amber-500
-  "217, 119, 6",    // amber-600
-  "180, 83, 9",     // amber-700
-  "253, 230, 138",  // amber-200
-  "254, 243, 199",  // amber-100
-];
+const DOT_COLOR = "#f59e0b"; // amber-500 — single uniform color
 
 interface Particle {
   x: number;
@@ -127,8 +120,6 @@ interface Particle {
   targetY: number;
   radius: number;
   baseRadius: number;
-  color: string;
-  alpha: number;
   phase: number;
   poseIndex: number;
 }
@@ -155,7 +146,7 @@ export default function ParticleLoader({
 
     const numPoints = HORSE_POSES[0].length;
 
-    // Create particles — one per point in each pose
+    // Create dots — one per point in each pose
     const particles: Particle[] = Array.from({ length: numPoints }, (_, i) => {
       const [px, py] = HORSE_POSES[0][i];
       const x = px * size;
@@ -165,27 +156,12 @@ export default function ParticleLoader({
         y,
         targetX: x,
         targetY: y,
-        radius: 1.2 + Math.random() * 1.8,
-        baseRadius: 1.2 + Math.random() * 1.8,
-        color: COLORS[Math.floor(Math.random() * COLORS.length)],
-        alpha: 0.4 + Math.random() * 0.6,
+        radius: 1.5 + Math.random() * 2,
+        baseRadius: 1.5 + Math.random() * 2,
         phase: Math.random() * Math.PI * 2,
         poseIndex: i,
       };
     });
-
-    // Extra ambient particles that float around
-    const ambientCount = 25;
-    const ambientParticles = Array.from({ length: ambientCount }, () => ({
-      x: Math.random() * size,
-      y: Math.random() * size,
-      vx: (Math.random() - 0.5) * 0.5,
-      vy: (Math.random() - 0.5) * 0.5,
-      radius: 0.5 + Math.random() * 1,
-      color: COLORS[Math.floor(Math.random() * COLORS.length)],
-      alpha: 0.1 + Math.random() * 0.2,
-      phase: Math.random() * Math.PI * 2,
-    }));
 
     let time = 0;
     const gallopSpeed = 3.5; // frames per second for gallop cycle
@@ -205,17 +181,9 @@ export default function ParticleLoader({
       // Subtle vertical bob for gallop feel
       const bob = Math.sin(cyclePos * Math.PI * 2) * 3;
 
-      // Draw soft ambient glow
-      const cx = size * 0.47;
-      const cy = size * 0.40 + bob;
-      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, size * 0.4);
-      gradient.addColorStop(0, `rgba(251, 191, 36, 0.06)`);
-      gradient.addColorStop(0.6, `rgba(245, 158, 11, 0.03)`);
-      gradient.addColorStop(1, "rgba(245, 158, 11, 0)");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, size, size);
+      // Update and draw horse dots
+      ctx.fillStyle = DOT_COLOR;
 
-      // Update and draw horse particles
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
         const [ax, ay] = HORSE_POSES[poseA][i];
@@ -232,86 +200,15 @@ export default function ParticleLoader({
         p.y += dy * 0.12;
 
         // Add micro-jitter for organic feel
-        p.x += Math.sin(time * 3 + p.phase) * 0.8;
-        p.y += Math.cos(time * 2.5 + p.phase) * 0.8;
+        p.x += Math.sin(time * 3 + p.phase) * 0.6;
+        p.y += Math.cos(time * 2.5 + p.phase) * 0.6;
 
         // Pulsing size
-        p.radius = p.baseRadius * (0.8 + Math.sin(time * 2 + p.phase) * 0.3);
+        p.radius = p.baseRadius * (0.8 + Math.sin(time * 2 + p.phase) * 0.25);
 
-        // Dynamic alpha
-        const dynamicAlpha = p.alpha * (0.6 + Math.sin(time * 1.8 + p.phase) * 0.4);
-
-        // Outer glow
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius * 3.5, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${p.color}, ${dynamicAlpha * 0.1})`;
-        ctx.fill();
-
-        // Inner glow
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius * 1.8, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${p.color}, ${dynamicAlpha * 0.25})`;
-        ctx.fill();
-
-        // Core dot
+        // Draw solid dot
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${p.color}, ${dynamicAlpha})`;
-        ctx.fill();
-      }
-
-      // Draw connections between nearby horse particles
-      ctx.lineWidth = 0.4;
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < size * 0.08) {
-            const alpha = (1 - dist / (size * 0.08)) * 0.12;
-            ctx.beginPath();
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(251, 191, 36, ${alpha})`;
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Ambient floating particles
-      for (const ap of ambientParticles) {
-        ap.x += ap.vx;
-        ap.y += ap.vy;
-
-        // Wrap around
-        if (ap.x < 0) ap.x = size;
-        if (ap.x > size) ap.x = 0;
-        if (ap.y < 0) ap.y = size;
-        if (ap.y > size) ap.y = 0;
-
-        const aAlpha = ap.alpha * (0.5 + Math.sin(time * 1.2 + ap.phase) * 0.5);
-
-        ctx.beginPath();
-        ctx.arc(ap.x, ap.y, ap.radius * 2, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${ap.color}, ${aAlpha * 0.15})`;
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(ap.x, ap.y, ap.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${ap.color}, ${aAlpha})`;
-        ctx.fill();
-      }
-
-      // Trailing dust particles behind the horse
-      const dustCount = 3;
-      for (let d = 0; d < dustCount; d++) {
-        const dustX = size * 0.78 + Math.random() * size * 0.12;
-        const dustY = size * 0.65 + bob + Math.random() * size * 0.1;
-        const dustR = 0.5 + Math.random() * 1;
-        const dustAlpha = 0.05 + Math.random() * 0.08;
-        ctx.beginPath();
-        ctx.arc(dustX, dustY, dustR, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(253, 230, 138, ${dustAlpha})`;
         ctx.fill();
       }
 
