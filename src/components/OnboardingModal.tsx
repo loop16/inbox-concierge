@@ -101,6 +101,7 @@ export default function OnboardingModal() {
         const decoder = new TextDecoder();
         let buf = "";
         let modalClosed = false;
+        let totalBatches = 1;
 
         const closeModal = async () => {
           if (modalClosed) return;
@@ -131,10 +132,17 @@ export default function OnboardingModal() {
                 if (!line.trim()) continue;
                 try {
                   const evt = JSON.parse(line);
-                  if (evt.phase === "llm-progress") {
+                  if (evt.phase === "llm-batches") {
+                    totalBatches = evt.totalBatches || 1;
+                  } else if (evt.phase === "llm-progress") {
                     setApplyStatus(`Classifying ${evt.processed} of ${evt.total}`);
                     queryClient.invalidateQueries({ queryKey: ["buckets"] });
                     queryClient.invalidateQueries({ queryKey: ["threads"] });
+                    totalBatches = evt.totalBatches || totalBatches;
+                    if (evt.batchesCompleted >= Math.ceil(totalBatches * 0.75)) {
+                      await closeModal();
+                      return;
+                    }
                   } else if (evt.phase === "complete") {
                     queryClient.invalidateQueries({ queryKey: ["buckets"] });
                     queryClient.invalidateQueries({ queryKey: ["threads"] });
