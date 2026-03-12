@@ -332,9 +332,12 @@ export async function POST(request: NextRequest) {
           type LLMUpdate = { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string };
           let updates: LLMUpdate[] = [];
 
+          // Build set of valid thread IDs to filter out hallucinated IDs from LLM
+          const validThreadIds = new Set(threads.map((t) => t.id));
+
           if (!llmAborted && classifications.length > 0) {
             updates = classifications
-              .filter((c) => resolveBucketId(c.bucket))
+              .filter((c) => resolveBucketId(c.bucket) && validThreadIds.has(c.threadId))
               .map((c) => ({
                 id: c.threadId,
                 bucketId: resolveBucketId(c.bucket)!,
@@ -347,31 +350,54 @@ export async function POST(request: NextRequest) {
                 aiSenderType: c.senderType,
               }));
 
-            llmBased = updates.length;
-            const unmatchedBucketIds = classifications.length - updates.length;
-            failed += unmatchedBucketIds;
-            if (unmatchedBucketIds > 0) {
-              console.warn(`[CLASSIFY] ${unmatchedBucketIds} classifications had no matching bucket ID`);
-            }
+            const invalidIds = classifications.filter((c) => !validThreadIds.has(c.threadId)).length;
+            const unmatchedBuckets = classifications.filter((c) => validThreadIds.has(c.threadId) && !resolveBucketId(c.bucket)).length;
+            failed += invalidIds + unmatchedBuckets;
+            if (invalidIds > 0) console.warn(`[CLASSIFY] ${invalidIds} classifications had invalid thread IDs`);
+            if (unmatchedBuckets > 0) console.warn(`[CLASSIFY] ${unmatchedBuckets} classifications had no matching bucket`);
 
-            if (updates.length > 0) {
-              await prisma.$transaction(
-                updates.map((u) =>
-                  prisma.thread.update({
-                    where: { id: u.id },
-                    data: {
-                      bucket: { connect: { id: u.bucketId } },
-                      confidence: u.confidence,
-                      reason: u.reason,
-                      aiCategory: u.aiCategory,
-                      aiActionability: u.aiActionability,
-                      aiUrgency: u.aiUrgency,
-                      aiRisk: u.aiRisk,
-                      aiSenderType: u.aiSenderType,
-                    },
-                  })
-                )
-              );
+            llmBased = updates.length;
+
+            // Write in chunks to avoid single failed update killing everything
+            const WRITE_CHUNK = 25;
+            for (let i = 0; i < updates.length; i += WRITE_CHUNK) {
+              const chunk = updates.slice(i, i + WRITE_CHUNK);
+              try {
+                await prisma.$transaction(
+                  chunk.map((u) =>
+                    prisma.thread.update({
+                      where: { id: u.id },
+                      data: {
+                        bucket: { connect: { id: u.bucketId } },
+                        confidence: u.confidence,
+                        reason: u.reason,
+                        aiCategory: u.aiCategory,
+                        aiActionability: u.aiActionability,
+                        aiUrgency: u.aiUrgency,
+                        aiRisk: u.aiRisk,
+                        aiSenderType: u.aiSenderType,
+                      },
+                    })
+                  )
+                );
+              } catch (txErr) {
+                console.warn(`[CLASSIFY] DB write chunk failed, falling back to individual updates:`, (txErr as Error).message);
+                for (const u of chunk) {
+                  try {
+                    await prisma.thread.update({
+                      where: { id: u.id },
+                      data: {
+                        bucket: { connect: { id: u.bucketId } },
+                        confidence: u.confidence,
+                        reason: u.reason,
+                      },
+                    });
+                  } catch {
+                    failed++;
+                    llmBased--;
+                  }
+                }
+              }
             }
           }
 
