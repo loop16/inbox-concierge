@@ -13,6 +13,7 @@ interface CinematicLoaderProps {
   dotCount?: number;
   duration?: number; // total loop duration in seconds
   onRevealComplete?: () => void;
+  inline?: boolean; // render inside a container instead of full-screen overlay
 }
 
 // ─── Math Helpers ───
@@ -192,19 +193,22 @@ export default function CinematicLoader({
   dotCount = 500,
   duration = 26,
   onRevealComplete,
+  inline = false,
 }: CinematicLoaderProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const animRef = useRef<number>(0);
   const [opacity, setOpacity] = useState(0);
   const [visible, setVisible] = useState(false);
   const wasLoadingRef = useRef(false);
+
+  const bg = inline ? (backgroundColor === "#000000" ? "#ffffff" : backgroundColor) : backgroundColor;
 
   // Fade in when isLoading becomes true, fade out when false
   useEffect(() => {
     if (isLoading) {
       wasLoadingRef.current = true;
       setVisible(true);
-      // Delay opacity for CSS transition
       const raf = requestAnimationFrame(() => setOpacity(1));
       return () => cancelAnimationFrame(raf);
     } else if (wasLoadingRef.current) {
@@ -238,47 +242,61 @@ export default function CinematicLoader({
     const phaseLength = holdTime + transitionTime;
     const totalDuration = numFormations * phaseLength;
 
-    // Stagger config: how spread out the per-dot delays are
-    const staggerSpread = 0.55; // fraction of transitionTime used for staggering
-    const dotTransFrac = 1 - staggerSpread; // fraction of transitionTime each dot takes
+    const staggerSpread = 0.55;
+    const dotTransFrac = 1 - staggerSpread;
 
-    // Dot radii (very subtle size variation)
-    const baseRadii = Array.from({ length: dotCount }, () => 2.8 + Math.random() * 1.2);
+    // Dot radii — smaller for inline mode
+    const radiusBase = inline ? 1.4 : 2.8;
+    const radiusRange = inline ? 0.6 : 1.2;
+    const baseRadii = Array.from({ length: dotCount }, () => radiusBase + Math.random() * radiusRange);
 
     // Resize handler
     const resize = () => {
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
+      if (inline) {
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+      } else {
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+      }
     };
     resize();
     window.addEventListener("resize", resize);
 
-    // Reduced motion check
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
     const startTime = performance.now();
 
     const animate = (now: number) => {
       const elapsed = (now - startTime) / 1000;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
 
-      // Apply DPR transform each frame (reset after resize)
+      let w: number, h: number;
+      if (inline) {
+        const container = containerRef.current;
+        if (!container) { animRef.current = requestAnimationFrame(animate); return; }
+        const rect = container.getBoundingClientRect();
+        w = rect.width;
+        h = rect.height;
+      } else {
+        w = window.innerWidth;
+        h = window.innerHeight;
+      }
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // Clear and fill background
-      ctx.fillStyle = backgroundColor;
+      ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
 
-      // Shape sizing: centered, proportional to screen
       const dim = Math.min(w, h);
-      const shapeScale = dim * 0.52;
+      const shapeScale = inline ? dim * 0.7 : dim * 0.52;
       const offsetX = (w - shapeScale) / 2;
-      const offsetY = (h - shapeScale) / 2 - dim * 0.03; // slightly above center
+      const offsetY = inline
+        ? (h - shapeScale) / 2
+        : (h - shapeScale) / 2 - dim * 0.03;
 
-      const dotSizeScale = Math.max(dim / 550, 0.8);
+      const dotSizeScale = inline ? Math.max(dim / 350, 0.6) : Math.max(dim / 550, 0.8);
 
-      // Static fallback for reduced motion
       if (prefersReduced) {
         const circle = formations[numFormations - 1];
         ctx.fillStyle = color;
@@ -297,13 +315,10 @@ export default function CinematicLoader({
         return;
       }
 
-      // Timeline position
       let loopTime: number;
       if (progress !== undefined && progress >= 0) {
-        // Progress-driven: map 0-100 to timeline
         loopTime = Math.min(progress / 100, 0.99) * totalDuration;
       } else {
-        // Time-based, looping
         loopTime = elapsed % totalDuration;
       }
 
@@ -320,7 +335,6 @@ export default function CinematicLoader({
       const next = formations[nextIdx];
       const nextStaggers = staggers[nextIdx];
 
-      // Draw dots
       ctx.fillStyle = color;
 
       for (let i = 0; i < dotCount; i++) {
@@ -334,7 +348,6 @@ export default function CinematicLoader({
           const nScale = next.scales[i];
           const sg = nextStaggers[i];
 
-          // Per-dot progress with stagger
           const dotStart = sg * staggerSpread;
           const dotEnd = dotStart + dotTransFrac;
           let dp: number;
@@ -356,7 +369,6 @@ export default function CinematicLoader({
           y = cy;
           scale = cScale;
 
-          // Origin pulse: single dot breathes
           if (phaseIdx === 0 && i === 0) {
             const pulse = 0.6 + Math.sin(elapsed * 2.8) * 0.4;
             scale = pulse;
@@ -369,7 +381,6 @@ export default function CinematicLoader({
         const py = offsetY + y * shapeScale;
         const r = baseRadii[i] * dotSizeScale * scale;
 
-        // Solid filled dot
         ctx.beginPath();
         ctx.arc(px, py, r, 0, Math.PI * 2);
         ctx.fill();
@@ -384,16 +395,41 @@ export default function CinematicLoader({
       cancelAnimationFrame(animRef.current);
       window.removeEventListener("resize", resize);
     };
-  }, [visible, dotCount, color, backgroundColor, duration, progress]);
+  }, [visible, dotCount, color, bg, duration, progress, inline]);
 
   if (!visible) return null;
 
+  // Inline mode: render inside parent container
+  if (inline) {
+    return (
+      <div
+        ref={containerRef}
+        className="w-full flex flex-col items-center"
+        style={{ opacity, transition: "opacity 0.5s ease-in-out" }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: 260, display: "block" }}
+        />
+        {message && (
+          <p
+            className="text-xs font-medium tracking-[0.15em] uppercase mt-3 text-center"
+            style={{ color: "#b45309", opacity: 0.8 }}
+          >
+            {message}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // Full-screen overlay mode
   return (
     <div
       className="fixed inset-0 z-[100]"
       style={{
         opacity,
-        backgroundColor,
+        backgroundColor: bg,
         transition: "opacity 0.7s ease-in-out",
         pointerEvents: isLoading ? "all" : "none",
       }}
