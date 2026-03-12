@@ -273,10 +273,11 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          if (!llmAborted && classifications.length > 0) {
-            type LLMUpdate = { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string };
+          type LLMUpdate = { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string };
+          let updates: LLMUpdate[] = [];
 
-            const updates: LLMUpdate[] = classifications
+          if (!llmAborted && classifications.length > 0) {
+            updates = classifications
               .filter((c) => resolveBucketId(c.bucket))
               .map((c) => ({
                 id: c.threadId,

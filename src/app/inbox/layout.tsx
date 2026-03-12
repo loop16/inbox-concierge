@@ -66,7 +66,12 @@ export default function InboxLayout({
       queryClient.invalidateQueries({ queryKey: ["buckets"] });
 
       // Check if this is a first-time setup: all buckets are defaults and no threads classified
+      // Wait for query invalidation to settle before checking
       if (res.ok && data.synced > 0) {
+        await queryClient.invalidateQueries({ queryKey: ["threads"] });
+        await queryClient.invalidateQueries({ queryKey: ["buckets"] });
+        // Small delay to let DB settle (Neon connection pooling)
+        await new Promise((r) => setTimeout(r, 500));
         try {
           const bucketsRes = await fetch("/api/buckets");
           const buckets = await bucketsRes.json();

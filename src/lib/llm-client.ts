@@ -20,5 +20,5 @@ export function getLLMClient(): OpenAI | null {
 }
 
 export function getLLMModel(): string {
-  return process.env.OPENAI_MODEL || "gpt-5-mini";
+  return process.env.OPENAI_MODEL || "gpt-5-nano";
 }

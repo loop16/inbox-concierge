@@ -158,11 +158,21 @@ const NOTIFICATION_DOMAINS = new Set([
   "facebookmail.com", "twitter.com", "x.com", "linkedin.com",
   "instagram.com", "pinterest.com", "tiktok.com", "youtube.com",
   "medium.com", "reddit.com", "quora.com",
-  "stripe.com", "paypal.com", "venmo.com", "cashapp.com",
-  "uber.com", "lyft.com", "doordash.com", "grubhub.com",
-  "amazon.com", "ebay.com", "walmart.com", "target.com",
-  "netflix.com", "spotify.com", "apple.com",
   "steamcommunity.com", "ea.com", "epicgames.com",
+]);
+
+// Domains that primarily send receipts, ride summaries, or purchase confirmations
+const RECEIPT_SENDER_DOMAINS = new Set([
+  "lyft.com", "uber.com", "doordash.com", "grubhub.com", "ubereats.com",
+  "instacart.com", "postmates.com", "seamless.com", "caviar.com",
+  "stripe.com", "paypal.com", "venmo.com", "cashapp.com", "zelle.com",
+  "square.com", "shopify.com",
+  "amazon.com", "ebay.com", "walmart.com", "target.com", "bestbuy.com",
+  "costco.com", "homedepot.com", "lowes.com", "macys.com", "nordstrom.com",
+  "nike.com", "adidas.com", "apple.com",
+  "airbnb.com", "booking.com", "expedia.com", "hotels.com",
+  "delta.com", "united.com", "aa.com", "southwest.com", "jetblue.com",
+  "netflix.com", "spotify.com", "hulu.com", "disneyplus.com",
 ]);
 
 const RECEIPT_SUBJECT_KEYWORDS = [
@@ -170,6 +180,11 @@ const RECEIPT_SUBJECT_KEYWORDS = [
   "your order", "purchase confirmation", "refund", "charge",
   "transaction", "statement", "billing", "subscription renewed",
   "account statement", "wire transfer",
+  "trip with", "trip summary", "ride with", "ride summary", "your ride",
+  "your trip", "delivery from", "delivery confirmation", "shipping confirmation",
+  "payment received", "payment confirmation", "thank you for your purchase",
+  "your recent purchase", "order #", "booking confirmation",
+  "renewal", "auto-pay", "autopay", "monthly charge",
 ];
 
 const CALENDAR_SUBJECT_KEYWORDS = [
@@ -185,13 +200,19 @@ function matchAutomatedEmail(
   const domain = thread.senderEmail.split("@")[1]?.toLowerCase() || "";
   const subjectLower = thread.subject.toLowerCase();
 
+  // Receipt sender domains → Finance / Receipts (these companies primarily send receipts)
+  if (RECEIPT_SENDER_DOMAINS.has(domain)) {
+    const bucket = findBucket(bucketByName, "Finance / Receipts", "Finance", "Receipts");
+    if (bucket) return result(bucket, `Receipt sender: ${domain}`, 0.92, "auto-detect");
+  }
+
   // Bulk sender domains → Newsletters
   if (BULK_SENDER_DOMAINS.has(domain)) {
     const bucket = findBucket(bucketByName, "Newsletters", "Newsletter");
     if (bucket) return result(bucket, `Bulk sender domain: ${domain}`, 0.92, "auto-detect");
   }
 
-  // Notification domains — only match receipts, let AI handle the rest
+  // Other notification domains — only match if subject has receipt keywords
   if (NOTIFICATION_DOMAINS.has(domain)) {
     if (RECEIPT_SUBJECT_KEYWORDS.some((kw) => subjectLower.includes(kw))) {
       const bucket = findBucket(bucketByName, "Finance / Receipts", "Finance", "Receipts");
@@ -245,6 +266,10 @@ const FINANCE_KEYWORDS = [
   "subscription confirmation", "your order", "purchase confirmation",
   "refund", "charge", "credit card", "bank alert", "wire transfer",
   "tax document", "w-2", "1099", "account statement",
+  "trip summary", "ride summary", "your ride", "your trip",
+  "trip with", "ride with", "delivery confirmation", "shipping confirmation",
+  "booking confirmation", "renewal", "auto-pay", "autopay",
+  "monthly charge", "order #", "payment received",
 ];
 
 const RECRUITING_KEYWORDS = [

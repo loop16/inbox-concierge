@@ -350,7 +350,7 @@ export default function HeatmapPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center bg-[#FAFBFC]" style={{ height: "calc(100vh - 57px)" }}>
+      <div className="flex items-center justify-center bg-[#FAFBFC] h-full">
         <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-500 rounded-full animate-spin" />
       </div>
     );
@@ -358,7 +358,7 @@ export default function HeatmapPage() {
 
   if (threads.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 bg-[#FAFBFC]" style={{ height: "calc(100vh - 57px)" }}>
+      <div className="flex flex-col items-center justify-center gap-3 bg-[#FAFBFC] h-full">
         <p className="text-stone-400 text-sm">
           No threads to visualize. Sync first.
         </p>
@@ -369,11 +369,10 @@ export default function HeatmapPage() {
   return (
     <div
       ref={containerRef}
-      className="relative overflow-hidden select-none"
+      className="relative overflow-hidden select-none h-full"
       style={{
         background: "linear-gradient(135deg, #f0f4f8 0%, #e8edf5 25%, #f5f0f0 50%, #edf5f0 75%, #f0f0f8 100%)",
         width: "100%",
-        height: "calc(100vh - 57px)",
       }}
     >
       {buckets.map((bucket, bi) => {
