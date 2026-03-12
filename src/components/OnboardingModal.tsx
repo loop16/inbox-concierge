@@ -188,14 +188,23 @@ export default function OnboardingModal() {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {/* Inline cinematic animation — mounted only during loading/applying */}
-          {cinematicActive && (
+          {/* Loading spinner for bucket suggestion phase */}
+          {step === "loading" && (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="w-10 h-10 border-3 border-amber-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-medium tracking-[0.15em] uppercase text-amber-700/80">
+                Analyzing your inbox
+              </p>
+            </div>
+          )}
+
+          {/* Cinematic animation for classification phase */}
+          {step === "applying" && (
             <CinematicLoader
-              key={step}
               isLoading={true}
               inline
               dotCount={80}
-              message={step === "loading" ? "Analyzing your inbox" : applyStatus}
+              message={applyStatus}
             />
           )}
 
