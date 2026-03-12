@@ -268,18 +268,46 @@ export async function POST(request: NextRequest) {
           try {
             const probeResult = await classifyWithLLM(client, activeModel, batches[0], bucketDefs, ruleHints, ruleReasons);
             // Probe succeeded — run all remaining batches in parallel
+            const failedBatchIndices: number[] = [];
             const remainingResults = batches.length > 1
               ? await Promise.all(
-                  batches.slice(1).map((batch) =>
+                  batches.slice(1).map((batch, idx) =>
                     classifyWithLLM(client, activeModel, batch, bucketDefs, ruleHints, ruleReasons)
                       .catch((e) => {
-                        console.warn(`[CLASSIFY] Batch failed:`, (e as Error).message);
+                        console.warn(`[CLASSIFY] Batch ${idx + 1} failed:`, (e as Error).message);
+                        failedBatchIndices.push(idx + 1);
                         return [] as DimensionalClassification[];
                       })
                   )
                 )
               : [];
             classifications = [probeResult, ...remainingResults].flat();
+
+            // Retry failed batches up to 2 times
+            for (let attempt = 0; attempt < 2 && failedBatchIndices.length > 0; attempt++) {
+              send({ phase: "llm-retry", attempt: attempt + 1, retrying: failedBatchIndices.length, message: `Retrying ${failedBatchIndices.length} failed batch(es)...` });
+              const stillFailed: number[] = [];
+              const retryResults = await Promise.all(
+                [...failedBatchIndices].map((batchIdx) =>
+                  classifyWithLLM(client, activeModel, batches[batchIdx], bucketDefs, ruleHints, ruleReasons)
+                    .catch((e) => {
+                      console.warn(`[CLASSIFY] Retry ${attempt + 1} batch ${batchIdx} failed:`, (e as Error).message);
+                      stillFailed.push(batchIdx);
+                      return [] as DimensionalClassification[];
+                    })
+                )
+              );
+              for (const result of retryResults) {
+                if (result.length > 0) classifications.push(...result);
+              }
+              failedBatchIndices.length = 0;
+              failedBatchIndices.push(...stillFailed);
+            }
+
+            if (failedBatchIndices.length > 0) {
+              const failedCount = failedBatchIndices.reduce((sum, idx) => sum + batches[idx].length, 0);
+              console.warn(`[CLASSIFY] ${failedBatchIndices.length} batch(es) failed after retries (${failedCount} threads)`);
+            }
           } catch (e) {
             const msg = (e as Error).message || "";
             console.warn(`[CLASSIFY] Model ${activeModel} failed: ${msg}`);

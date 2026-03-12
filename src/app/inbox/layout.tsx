@@ -30,6 +30,7 @@ export default function InboxLayout({
     setSearchQuery,
     classifyProgress,
     setClassifyProgress,
+    setFailedClassifyCount,
   } = useAppStore();
 
   const [toast, setToast] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export default function InboxLayout({
   const handleClassify = async (reclassify = false) => {
     setClassifyLoading(reclassify ? "reclassify" : "classify");
     setClassifyProgress("Starting...");
+    setFailedClassifyCount(0);
     try {
       const url = reclassify ? "/api/classify?reclassify=true" : "/api/classify";
       const res = await fetch(url, { method: "POST" });
@@ -148,6 +150,7 @@ export default function InboxLayout({
               showToast(
                 `Classified ${evt.classified} / ${evt.total} threads${timeStr}${parts.length ? ` (${parts.join(", ")})` : ""}`
               );
+              setFailedClassifyCount(evt.failed || 0);
             } else if (evt.phase === "error") {
               showToast(`Classification error: ${evt.message}`);
             }

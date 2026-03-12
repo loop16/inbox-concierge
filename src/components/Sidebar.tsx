@@ -33,6 +33,10 @@ export default function Sidebar() {
     setNewBucketOpen,
     draggingThreadId,
     setActionToast,
+    failedClassifyCount,
+    setFailedClassifyCount,
+    retryingClassify,
+    setRetryingClassify,
   } = useAppStore();
 
   const [resetting, setResetting] = useState(false);
@@ -129,6 +133,42 @@ export default function Sidebar() {
 
   const totalThreads = buckets.reduce((sum, b) => sum + b._count.threads, 0);
 
+  const handleRetryFailed = async () => {
+    setRetryingClassify(true);
+    try {
+      const res = await fetch("/api/classify", { method: "POST" });
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const evt = JSON.parse(line);
+              if (evt.phase === "llm-progress" || evt.phase === "complete") {
+                queryClient.invalidateQueries({ queryKey: ["buckets"] });
+                queryClient.invalidateQueries({ queryKey: ["threads"] });
+              }
+              if (evt.phase === "complete") {
+                setFailedClassifyCount(evt.failed || 0);
+              }
+            } catch { /* ignore */ }
+          }
+        }
+      }
+    } finally {
+      setRetryingClassify(false);
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+    }
+  };
+
   useEffect(() => {
     const handler = () => setMenuBucket(null);
     document.addEventListener("click", handler);
@@ -186,6 +226,36 @@ export default function Sidebar() {
             Drop on a bucket to move
           </div>
         )}
+        {/* Retry banner for failed classifications */}
+        {failedClassifyCount > 0 && (
+          <div className="mb-3 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                {retryingClassify ? (
+                  <svg className="w-3.5 h-3.5 animate-spin text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                )}
+                <span className="text-xs text-amber-800 font-medium">
+                  {retryingClassify ? "Retrying..." : `${failedClassifyCount} emails unclassified`}
+                </span>
+              </div>
+              <button
+                onClick={handleRetryFailed}
+                disabled={retryingClassify}
+                className="text-xs font-semibold text-amber-700 hover:text-amber-900 cursor-pointer disabled:opacity-50 flex-shrink-0 px-2 py-1 rounded hover:bg-amber-100 transition-colors"
+              >
+                {retryingClassify ? "" : "Retry"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Buckets */}
         <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400 px-3 mb-2">
           Buckets

@@ -38,6 +38,10 @@ interface AppState {
   setOnboardingOpen: (v: boolean) => void;
   classifyProgress: string | null;
   setClassifyProgress: (v: string | null) => void;
+  failedClassifyCount: number;
+  setFailedClassifyCount: (n: number) => void;
+  retryingClassify: boolean;
+  setRetryingClassify: (v: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -64,4 +68,8 @@ export const useAppStore = create<AppState>((set) => ({
   setOnboardingOpen: (v) => set({ onboardingOpen: v }),
   classifyProgress: null,
   setClassifyProgress: (v) => set({ classifyProgress: v }),
+  failedClassifyCount: 0,
+  setFailedClassifyCount: (n) => set({ failedClassifyCount: n }),
+  retryingClassify: false,
+  setRetryingClassify: (v) => set({ retryingClassify: v }),
 }));
