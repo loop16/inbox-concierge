@@ -139,16 +139,16 @@ export default function OnboardingModal() {
     }
   };
 
-  // Auto-start fetching when modal opens
+  // Auto-start fetching when modal opens — only trigger on onboardingOpen change
   useEffect(() => {
-    if (onboardingOpen && step === "loading" && suggestions.length === 0 && !error && !hasFetched.current) {
+    if (onboardingOpen && !hasFetched.current) {
       hasFetched.current = true;
       fetchSuggestions();
     }
     if (!onboardingOpen) {
       hasFetched.current = false;
     }
-  }, [onboardingOpen, step, suggestions.length, error]);
+  }, [onboardingOpen]);
 
   if (!onboardingOpen) return null;
 

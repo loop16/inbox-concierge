@@ -32,5 +32,5 @@ export function getLLMClient(): OpenAI | null {
 }
 
 export function getLLMModel(): string {
-  return process.env.LLM_MODEL || process.env.OPENAI_MODEL || "gemini-2.5-flash";
+  return process.env.LLM_MODEL || process.env.OPENAI_MODEL || "gemini-2.0-flash";
 }
