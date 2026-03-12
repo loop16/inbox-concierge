@@ -3,6 +3,8 @@ import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getLLMClient, getSmartModel } from "@/lib/llm-client";
 import { fetchThreadBody } from "@/lib/gmail";
+import { fetchImapMessageBody } from "@/lib/imap-service";
+import { decrypt } from "@/lib/crypto";
 
 export async function POST(
   _request: NextRequest,
@@ -29,13 +31,35 @@ export async function POST(
     return NextResponse.json({ error: "No AI provider configured" }, { status: 503 });
   }
 
-  // Fetch full email body from Gmail
+  // Fetch full email body
   let emailBody = thread.snippet || "";
-  if (auth.accessToken && thread.gmailThreadId) {
+  const isImap = thread.gmailThreadId.startsWith("imap-");
+
+  if (isImap) {
+    // IMAP: parse account ID and UID from gmailThreadId format "imap-{accountId}-{uid}"
+    try {
+      const parts = thread.gmailThreadId.split("-");
+      const accountId = parts.slice(1, -1).join("-"); // account ID (cuid)
+      const uid = parseInt(parts[parts.length - 1], 10);
+      const account = await prisma.imapAccount.findFirst({
+        where: { id: accountId, userId: auth.user.id },
+      });
+      if (account && !isNaN(uid)) {
+        const password = decrypt(account.password);
+        emailBody = await fetchImapMessageBody(
+          { host: account.imapHost, port: account.imapPort, secure: account.imapTls, email: account.email, password },
+          uid,
+        );
+      }
+    } catch (e) {
+      console.warn(`[SUMMARIZE] Failed to fetch IMAP body, using snippet:`, (e as Error).message);
+    }
+  } else if (auth.accessToken && thread.gmailThreadId) {
+    // Gmail
     try {
       emailBody = await fetchThreadBody(auth.accessToken, thread.gmailThreadId);
     } catch (e) {
-      console.warn(`[SUMMARIZE] Failed to fetch full body, using snippet:`, (e as Error).message);
+      console.warn(`[SUMMARIZE] Failed to fetch Gmail body, using snippet:`, (e as Error).message);
     }
   }
 
