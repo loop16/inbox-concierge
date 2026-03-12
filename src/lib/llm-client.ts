@@ -37,7 +37,7 @@ const _isGemini = !!(process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY
 export function getLLMModel(): string {
   if (process.env.LLM_MODEL) return process.env.LLM_MODEL;
   if (!_isGemini && process.env.OPENAI_MODEL) return process.env.OPENAI_MODEL;
-  return _isGemini ? "gemini-2.5-flash-lite" : "gpt-4o-mini";
+  return _isGemini ? "gemini-2.5-flash" : "gpt-4o-mini";
 }
 
 // Fallback models to try if the primary fast model 404s
