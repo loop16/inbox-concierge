@@ -48,38 +48,38 @@ export async function classifyWithLLM(
   ruleHints?: Map<string, string>,
   ruleReasons?: Map<string, string>,
 ): Promise<DimensionalClassification[]> {
-  // Compact thread format: [id, subject, sender, preview, hint?]
-  const compact = threads.map((t) => {
-    const row: (string | boolean)[] = [
-      t.id,
-      t.subject.slice(0, 80),
-      t.senderEmail,
-      t.snippet.slice(0, 100),
-    ];
-    if (t.hasUnsubscribe) row.push(true); // index 4 = unsub
+  const trimmed = threads.map((t) => {
+    const entry: Record<string, string | boolean> = {
+      id: t.id,
+      subject: t.subject.slice(0, 80),
+      from: t.senderEmail,
+      preview: t.snippet.slice(0, 100),
+    };
+    if (t.hasUnsubscribe) entry.unsub = true;
     const hint = ruleHints?.get(t.id);
-    if (hint) row.push(hint); // index 4 or 5 = suggested bucket
-    return row;
+    if (hint) entry.suggested = hint;
+    return entry;
   });
 
-  const bucketNames = buckets.map((b) => b.name).join(", ");
+  const bucketList = buckets.map((b) => `"${b.name}"`).join(", ");
 
-  const prompt = `Classify these emails into buckets: ${bucketNames}
+  const prompt = `Classify each email into one of these buckets: ${bucketList}
 
-Format: [id, subject, sender, preview, unsub?, suggested?]
-Emails with "suggested" = keep that bucket unless clearly wrong.
-unsub=true → likely newsletter/marketing.
-Receipts/orders/rides → "Finance / Receipts"
+If an email has "suggested", keep that bucket unless clearly wrong.
+If "unsub" is true, it's likely a newsletter or marketing email.
+Receipts, orders, ride summaries, invoices → "Finance / Receipts"
 
-${JSON.stringify(compact)}
+Emails:
+${JSON.stringify(trimmed)}
 
-Return JSON: {"r":[{"t":"threadId","b":"bucket","c":0.9,"n":"reason"}]}`;
+Return a JSON object with key "results" containing an array:
+{"results":[{"threadId":"...","bucket":"exact bucket name","confidence":0.9,"reason":"short reason"}]}`;
 
   const t0 = Date.now();
   const response = await client.chat.completions.create({
     model,
     messages: [
-      { role: "system", content: "Classify emails into buckets. Return JSON only." },
+      { role: "system", content: "You classify emails into buckets. Respond with JSON only." },
       { role: "user", content: prompt },
     ],
     response_format: { type: "json_object" },
