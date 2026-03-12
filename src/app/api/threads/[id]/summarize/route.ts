@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import { getLLMClient, getLLMModel } from "@/lib/llm-client";
+import { getLLMClient, getSmartModel } from "@/lib/llm-client";
 
 export async function POST(
   _request: NextRequest,
@@ -28,7 +28,7 @@ export async function POST(
     return NextResponse.json({ error: "No AI provider configured" }, { status: 503 });
   }
 
-  const model = getLLMModel();
+  const model = getSmartModel();
 
   const response = await client.chat.completions.create({
     model,
