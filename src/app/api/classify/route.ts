@@ -228,120 +228,78 @@ export async function POST(request: NextRequest) {
             isDefault: b.isDefault,
           }));
 
-          const BATCH_SIZE = 40;
-          const CONCURRENCY = 4;
-          const allBatches: typeof threads[] = [];
-          for (let i = 0; i < needsLLM.length; i += BATCH_SIZE) {
-            allBatches.push(needsLLM.slice(i, i + BATCH_SIZE));
-          }
-          const totalBatches = allBatches.length;
-
           send({
             phase: "llm",
             processed,
             total: threads.length,
             batch: 0,
-            totalBatches,
-            message: `AI: ${needsLLM.length} threads in ${totalBatches} batch${totalBatches > 1 ? "es" : ""} (${CONCURRENCY} parallel)`,
+            totalBatches: 1,
+            message: `AI: classifying ${needsLLM.length} threads...`,
           });
 
           let llmAborted = false;
 
-          // Process in concurrent groups
-          for (let g = 0; g < allBatches.length; g += CONCURRENCY) {
-            if (llmAborted) break;
+          // Send all threads in one call
+          const summaries: ThreadSummary[] = needsLLM.map((t) => ({
+            id: t.id,
+            subject: t.subject,
+            sender: t.sender,
+            senderEmail: t.senderEmail,
+            snippet: t.snippet,
+            hasUnsubscribe: t.hasUnsubscribe,
+          }));
 
-            const group = allBatches.slice(g, g + CONCURRENCY);
-            const groupStartIdx = g;
+          let classifications: DimensionalClassification[] = [];
+          try {
+            classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
+          } catch (e) {
+            const msg = (e as Error).message || "";
 
-            const groupResults = await Promise.allSettled(
-              group.map(async (batch, localIdx) => {
-                const batchNum = groupStartIdx + localIdx + 1;
-                const summaries: ThreadSummary[] = batch.map((t) => ({
-                  id: t.id,
-                  subject: t.subject,
-                  sender: t.sender,
-                  senderEmail: t.senderEmail,
-                  snippet: t.snippet,
-                  hasUnsubscribe: t.hasUnsubscribe,
-                }));
-
-                let classifications: DimensionalClassification[] = [];
-                try {
-                  classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
-                } catch (e) {
-                  const msg = (e as Error).message || "";
-
-                  // Check for fatal errors — stop all LLM calls
-                  if (msg.includes("insufficient_quota") || msg.includes("billing")) {
-                    aiError = "Credits exhausted";
-                    llmAborted = true;
-                    throw e;
-                  }
-                  if (msg.includes("invalid_api_key") || msg.includes("401")) {
-                    aiError = "Invalid API key";
-                    llmAborted = true;
-                    throw e;
-                  }
-
-                  // Transient error — retry once
-                  console.warn(`LLM batch ${batchNum} failed, retrying:`, msg);
-                  try {
-                    classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
-                  } catch {
-                    return { batchNum, failed: batch.length, classified: 0, updates: [] as { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string }[] };
-                  }
-                }
-
-                const updates = classifications
-                  .filter((c) => resolveBucketId(c.bucket))
-                  .map((c) => ({
-                    id: c.threadId,
-                    bucketId: resolveBucketId(c.bucket)!,
-                    confidence: c.confidence,
-                    reason: c.reason,
-                    aiCategory: c.category,
-                    aiActionability: c.actionability,
-                    aiUrgency: c.urgency,
-                    aiRisk: c.risk,
-                    aiSenderType: c.senderType,
-                  }));
-
-                const unmatched = classifications.filter((c) => !resolveBucketId(c.bucket));
-                if (unmatched.length > 0) {
-                  console.warn(`[CLASSIFY] Unmatched bucket names:`, unmatched.map((c) => c.bucket));
-                }
-                const batchFailed = unmatched.length;
-
-                return {
-                  batchNum,
-                  failed: batchFailed,
-                  classified: updates.length,
-                  updates,
-                };
-              })
-            );
-
-            // Process group results
-            type LLMUpdate = { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string };
-            const allGroupUpdates: LLMUpdate[] = [];
-
-            for (const settled of groupResults) {
-              if (settled.status === "fulfilled") {
-                const r = settled.value;
-                llmBased += r.classified;
-                failed += r.failed;
-                allGroupUpdates.push(...r.updates);
-              } else {
-                const batchSize = group[groupResults.indexOf(settled)]?.length || 0;
-                failed += batchSize;
+            if (msg.includes("insufficient_quota") || msg.includes("billing")) {
+              aiError = "Credits exhausted";
+              llmAborted = true;
+            } else if (msg.includes("invalid_api_key") || msg.includes("401")) {
+              aiError = "Invalid API key";
+              llmAborted = true;
+            } else {
+              // Transient error — retry once
+              console.warn(`LLM failed, retrying:`, msg);
+              try {
+                classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints);
+              } catch {
+                failed += needsLLM.length;
               }
             }
+          }
 
-            // Batch write all updates from this concurrent group
-            if (allGroupUpdates.length > 0) {
+          if (!llmAborted && classifications.length > 0) {
+            type LLMUpdate = { id: string; bucketId: string; confidence: number; reason: string; aiCategory: string; aiActionability: string; aiUrgency: string; aiRisk: string; aiSenderType: string };
+
+            const updates: LLMUpdate[] = classifications
+              .filter((c) => resolveBucketId(c.bucket))
+              .map((c) => ({
+                id: c.threadId,
+                bucketId: resolveBucketId(c.bucket)!,
+                confidence: c.confidence,
+                reason: c.reason,
+                aiCategory: c.category,
+                aiActionability: c.actionability,
+                aiUrgency: c.urgency,
+                aiRisk: c.risk,
+                aiSenderType: c.senderType,
+              }));
+
+            const unmatched = classifications.filter((c) => !resolveBucketId(c.bucket));
+            if (unmatched.length > 0) {
+              console.warn(`[CLASSIFY] Unmatched bucket names:`, unmatched.map((c) => c.bucket));
+            }
+
+            llmBased = updates.length;
+            failed += unmatched.length;
+
+            if (updates.length > 0) {
               await prisma.$transaction(
-                allGroupUpdates.map((u) =>
+                updates.map((u) =>
                   prisma.thread.update({
                     where: { id: u.id },
                     data: {
@@ -358,24 +316,19 @@ export async function POST(request: NextRequest) {
                 )
               );
             }
-
-            processed += group.reduce((sum, batch) => sum + batch.length, 0);
-
-            send({
-              phase: "llm-progress",
-              processed,
-              total: threads.length,
-              batchesCompleted: Math.min(g + CONCURRENCY, totalBatches),
-              totalBatches,
-              llmBased,
-              failed,
-            });
-
-            // Small delay between concurrent groups (not between every batch)
-            if (g + CONCURRENCY < allBatches.length) {
-              await new Promise((r) => setTimeout(r, 200));
-            }
           }
+
+          processed += needsLLM.length;
+
+          send({
+            phase: "llm-progress",
+            processed,
+            total: threads.length,
+            batchesCompleted: 1,
+            totalBatches: 1,
+            llmBased,
+            failed,
+          });
 
           if (llmAborted) {
             aiAvailable = false;

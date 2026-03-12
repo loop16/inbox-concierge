@@ -109,29 +109,29 @@ function layoutTreemap(
   return rects;
 }
 
-/* ─── bright joyful color palette ─── */
+/* ─── liquid glass color palette ─── */
 
 const PALETTE = [
-  { bg: "#FF6B6B", hi: "#FF8E8E", text: "#FFFFFF", glow: "#FF6B6B40", border: "#FF5252" },
-  { bg: "#4ECDC4", hi: "#6ED8D0", text: "#FFFFFF", glow: "#4ECDC440", border: "#3DBDB4" },
-  { bg: "#45B7D1", hi: "#68C8DE", text: "#FFFFFF", glow: "#45B7D140", border: "#35A7C1" },
-  { bg: "#F7DC6F", hi: "#F9E68A", text: "#6B5B00", glow: "#F7DC6F40", border: "#F0D04A" },
-  { bg: "#BB8FCE", hi: "#CDA8DD", text: "#FFFFFF", glow: "#BB8FCE40", border: "#A87CBE" },
-  { bg: "#58D68D", hi: "#78E0A5", text: "#FFFFFF", glow: "#58D68D40", border: "#45C67D" },
-  { bg: "#F0876A", hi: "#F4A08A", text: "#FFFFFF", glow: "#F0876A40", border: "#E07458" },
-  { bg: "#5DADE2", hi: "#7DBDE8", text: "#FFFFFF", glow: "#5DADE240", border: "#4A9DD2" },
-  { bg: "#F1948A", hi: "#F5ADA5", text: "#FFFFFF", glow: "#F1948A40", border: "#E08478" },
-  { bg: "#82E0AA", hi: "#A0E8C0", text: "#1A5C30", glow: "#82E0AA40", border: "#6DD098" },
-  { bg: "#85C1E9", hi: "#A0D0EE", text: "#FFFFFF", glow: "#85C1E940", border: "#72B1D9" },
-  { bg: "#D7BDE2", hi: "#E2CEE8", text: "#5B2C6F", glow: "#D7BDE240", border: "#C7ADD2" },
+  { bg: "rgba(255,100,100,0.35)", hi: "rgba(255,140,140,0.4)", text: "#C0344D", glow: "rgba(255,100,100,0.2)", border: "rgba(255,100,100,0.3)" },
+  { bg: "rgba(78,205,196,0.35)", hi: "rgba(110,216,208,0.4)", text: "#1A8A80", glow: "rgba(78,205,196,0.2)", border: "rgba(78,205,196,0.3)" },
+  { bg: "rgba(69,183,209,0.35)", hi: "rgba(104,200,222,0.4)", text: "#1A6D8A", glow: "rgba(69,183,209,0.2)", border: "rgba(69,183,209,0.3)" },
+  { bg: "rgba(247,220,111,0.4)", hi: "rgba(249,230,138,0.45)", text: "#8A7500", glow: "rgba(247,220,111,0.2)", border: "rgba(247,220,111,0.35)" },
+  { bg: "rgba(187,143,206,0.35)", hi: "rgba(205,168,221,0.4)", text: "#6A3A80", glow: "rgba(187,143,206,0.2)", border: "rgba(187,143,206,0.3)" },
+  { bg: "rgba(88,214,141,0.35)", hi: "rgba(120,224,165,0.4)", text: "#1A7A3D", glow: "rgba(88,214,141,0.2)", border: "rgba(88,214,141,0.3)" },
+  { bg: "rgba(240,135,106,0.35)", hi: "rgba(244,160,138,0.4)", text: "#A04530", glow: "rgba(240,135,106,0.2)", border: "rgba(240,135,106,0.3)" },
+  { bg: "rgba(93,173,226,0.35)", hi: "rgba(125,189,232,0.4)", text: "#1A5A8A", glow: "rgba(93,173,226,0.2)", border: "rgba(93,173,226,0.3)" },
+  { bg: "rgba(241,148,138,0.35)", hi: "rgba(245,173,165,0.4)", text: "#A03A30", glow: "rgba(241,148,138,0.2)", border: "rgba(241,148,138,0.3)" },
+  { bg: "rgba(130,224,170,0.35)", hi: "rgba(160,232,192,0.4)", text: "#1A6A30", glow: "rgba(130,224,170,0.2)", border: "rgba(130,224,170,0.3)" },
+  { bg: "rgba(133,193,233,0.35)", hi: "rgba(160,208,238,0.4)", text: "#1A5080", glow: "rgba(133,193,233,0.2)", border: "rgba(133,193,233,0.3)" },
+  { bg: "rgba(215,189,226,0.35)", hi: "rgba(226,206,232,0.4)", text: "#5A2A6A", glow: "rgba(215,189,226,0.2)", border: "rgba(215,189,226,0.3)" },
 ];
 
 const UNCLASSIFIED = {
-  bg: "#D5DBDB",
-  hi: "#E0E4E4",
+  bg: "rgba(180,180,190,0.3)",
+  hi: "rgba(200,200,210,0.35)",
   text: "#5D6D7E",
-  glow: "#D5DBDB30",
-  border: "#BFC9CA",
+  glow: "rgba(180,180,190,0.15)",
+  border: "rgba(180,180,190,0.25)",
 };
 
 function colorFor(sortOrder: number, id: string) {
@@ -350,7 +350,7 @@ export default function HeatmapPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full bg-[#FAFBFC]">
+      <div className="flex items-center justify-center bg-[#FAFBFC]" style={{ height: "calc(100vh - 57px)" }}>
         <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-500 rounded-full animate-spin" />
       </div>
     );
@@ -358,7 +358,7 @@ export default function HeatmapPage() {
 
   if (threads.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 bg-[#FAFBFC]">
+      <div className="flex flex-col items-center justify-center gap-3 bg-[#FAFBFC]" style={{ height: "calc(100vh - 57px)" }}>
         <p className="text-stone-400 text-sm">
           No threads to visualize. Sync first.
         </p>
@@ -370,7 +370,11 @@ export default function HeatmapPage() {
     <div
       ref={containerRef}
       className="relative overflow-hidden select-none"
-      style={{ background: "#FAFBFC", width: "100%", height: "100%" }}
+      style={{
+        background: "linear-gradient(135deg, #f0f4f8 0%, #e8edf5 25%, #f5f0f0 50%, #edf5f0 75%, #f0f0f8 100%)",
+        width: "100%",
+        height: "calc(100vh - 57px)",
+      }}
     >
       {buckets.map((bucket, bi) => {
         const br = bucketRects[bi];
@@ -405,13 +409,15 @@ export default function HeatmapPage() {
               top: br.y + OUTER_GAP / 2,
               width: cellW,
               height: cellH,
-              background: `linear-gradient(135deg, ${color.bg} 0%, ${color.border} 100%)`,
-              borderRadius: 12,
+              background: color.bg,
+              backdropFilter: "blur(20px) saturate(1.8)",
+              WebkitBackdropFilter: "blur(20px) saturate(1.8)",
+              borderRadius: 16,
               overflow: "hidden",
-              transition: "box-shadow 0.25s ease, transform 0.2s ease",
+              transition: "box-shadow 0.3s ease, transform 0.2s ease",
               boxShadow: isOpen
-                ? `0 8px 30px ${color.glow}, 0 0 0 2px ${color.border}`
-                : `0 2px 8px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)`,
+                ? `0 8px 32px ${color.glow}, inset 0 1px 0 rgba(255,255,255,0.5), 0 0 0 1px ${color.border}`
+                : `inset 0 1px 0 rgba(255,255,255,0.4), inset 0 -1px 0 rgba(0,0,0,0.04), 0 2px 12px rgba(0,0,0,0.05), 0 0 0 1px ${color.border}`,
               zIndex: isOpen ? 10 : 1,
             }}
           >
@@ -426,7 +432,7 @@ export default function HeatmapPage() {
                   color: color.text,
                   fontSize: isTiny ? 9 : cellW < 120 ? 11 : 14,
                   letterSpacing: "0.01em",
-                  textShadow: color.text === "#FFFFFF" ? "0 1px 3px rgba(0,0,0,0.25)" : "none",
+                  textShadow: "0 1px 2px rgba(255,255,255,0.5)",
                 }}
               >
                 {bucket.name}
@@ -441,11 +447,10 @@ export default function HeatmapPage() {
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <span
                   style={{
-                    color: "white",
+                    color: "rgba(255,255,255,0.6)",
                     fontSize: Math.max(24, Math.min(56, cellW * 0.18)),
                     fontWeight: 800,
-                    opacity: 0.35,
-                    textShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                    textShadow: "0 2px 8px rgba(0,0,0,0.06)",
                   }}
                 >
                   {bucket.threads.length}
@@ -490,14 +495,16 @@ export default function HeatmapPage() {
                       top: sr.y + SENDER_GAP / 2,
                       width: sCellW,
                       height: sCellH,
-                      background: isSenderOpen ? `${color.hi}` : `${color.hi}CC`,
-                      borderRadius: 6,
+                      background: isSenderOpen ? color.hi : `${color.hi}`,
+                      backdropFilter: "blur(12px) saturate(1.5)",
+                      WebkitBackdropFilter: "blur(12px) saturate(1.5)",
+                      borderRadius: 10,
                       overflow: "hidden",
                       transition:
                         "background 0.2s ease, box-shadow 0.2s ease",
                       boxShadow: isSenderOpen
-                        ? `0 4px 16px ${color.glow}`
-                        : `inset 0 0 0 1px ${color.border}30`,
+                        ? `0 4px 16px ${color.glow}, inset 0 1px 0 rgba(255,255,255,0.4)`
+                        : `inset 0 1px 0 rgba(255,255,255,0.3), 0 0 0 1px ${color.border}`,
                       animation: "heatFadeIn 0.2s ease",
                       zIndex: isSenderOpen ? 5 : 1,
                     }}
@@ -634,12 +641,14 @@ export default function HeatmapPage() {
           }}
         >
           <div
-            className="rounded-xl overflow-hidden"
+            className="rounded-2xl overflow-hidden"
             style={{
-              background: "white",
-              border: "1px solid #E5E2DC",
+              background: "rgba(255,255,255,0.75)",
+              backdropFilter: "blur(24px) saturate(1.8)",
+              WebkitBackdropFilter: "blur(24px) saturate(1.8)",
+              border: "1px solid rgba(255,255,255,0.6)",
               boxShadow:
-                "0 12px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+                "0 12px 40px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
               maxWidth: 350,
             }}
           >
@@ -724,12 +733,14 @@ export default function HeatmapPage() {
           }}
         >
           <div
-            className="rounded-xl overflow-hidden"
+            className="rounded-2xl overflow-hidden"
             style={{
-              background: "white",
-              border: "1px solid #E5E2DC",
+              background: "rgba(255,255,255,0.75)",
+              backdropFilter: "blur(24px) saturate(1.8)",
+              WebkitBackdropFilter: "blur(24px) saturate(1.8)",
+              border: "1px solid rgba(255,255,255,0.6)",
               boxShadow:
-                "0 12px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+                "0 12px 40px rgba(0,0,0,0.1), 0 2px 8px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.5)",
               maxWidth: 320,
             }}
           >
