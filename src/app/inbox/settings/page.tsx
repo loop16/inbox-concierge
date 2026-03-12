@@ -166,6 +166,22 @@ export default function SettingsPage() {
     queryClient.invalidateQueries({ queryKey: ["sender-rules"] });
   };
 
+  const [fullResetting, setFullResetting] = useState(false);
+
+  const handleFullReset = async () => {
+    if (!confirm("This will delete ALL your threads, buckets, learned rules, and classifications. You'll start fresh like a new user. Are you sure?")) return;
+    if (!confirm("Really? This cannot be undone.")) return;
+    setFullResetting(true);
+    try {
+      await fetch("/api/reset", { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: ["threads"] });
+      queryClient.invalidateQueries({ queryKey: ["buckets"] });
+      queryClient.invalidateQueries({ queryKey: ["sender-rules"] });
+    } finally {
+      setFullResetting(false);
+    }
+  };
+
   const activePreset = selectedPreset ? PRESETS.find((p) => p.id === selectedPreset) : null;
 
   /* ── render ── */
@@ -422,6 +438,31 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* ═══ DANGER ZONE ═══ */}
+      <section>
+        <h2 className="text-2xl font-bold text-red-600 mb-1">Danger Zone</h2>
+        <p className="text-sm text-stone-500 mb-4">
+          Irreversible actions that will delete your data.
+        </p>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-medium text-stone-900 text-sm">Full Reset</div>
+              <div className="text-xs text-stone-500 mt-0.5">
+                Deletes all threads, buckets, learned rules, and classifications. Starts fresh like a new user.
+              </div>
+            </div>
+            <button
+              onClick={handleFullReset}
+              disabled={fullResetting}
+              className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer transition-colors flex-shrink-0"
+            >
+              {fullResetting ? "Resetting..." : "Reset Everything"}
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );
