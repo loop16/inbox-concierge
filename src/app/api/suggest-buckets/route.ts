@@ -15,11 +15,11 @@ export async function POST() {
     return NextResponse.json({ error: "AI classification is temporarily unavailable" }, { status: 503 });
   }
 
-  // Sample up to 80 recent threads
+  // Sample up to 40 recent threads (enough for patterns, fast for AI)
   const threads = await prisma.thread.findMany({
     where: { userId: auth.user.id },
     orderBy: { date: "desc" },
-    take: 80,
+    take: 40,
     select: {
       subject: true,
       sender: true,

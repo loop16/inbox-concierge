@@ -241,8 +241,9 @@ export async function POST(request: NextRequest) {
 
           let llmAborted = false;
 
-          // Send all threads in one call
-          const summaries: ThreadSummary[] = needsLLM.map((t) => ({
+          // Split into parallel batches of 50 for speed
+          const BATCH_SIZE = 50;
+          const allSummaries: ThreadSummary[] = needsLLM.map((t) => ({
             id: t.id,
             subject: t.subject,
             sender: t.sender,
@@ -251,9 +252,26 @@ export async function POST(request: NextRequest) {
             hasUnsubscribe: t.hasUnsubscribe,
           }));
 
+          const batches: ThreadSummary[][] = [];
+          for (let i = 0; i < allSummaries.length; i += BATCH_SIZE) {
+            batches.push(allSummaries.slice(i, i + BATCH_SIZE));
+          }
+
+          send({ phase: "llm-batches", totalBatches: batches.length, message: `AI: ${batches.length} parallel batches of ~${BATCH_SIZE}...` });
+
           let classifications: DimensionalClassification[] = [];
           try {
-            classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints, ruleReasons);
+            // Run all batches in parallel
+            const batchResults = await Promise.all(
+              batches.map((batch) =>
+                classifyWithLLM(client, model, batch, bucketDefs, ruleHints, ruleReasons)
+                  .catch((e) => {
+                    console.warn(`[CLASSIFY] Batch failed:`, (e as Error).message);
+                    return [] as DimensionalClassification[];
+                  })
+              )
+            );
+            classifications = batchResults.flat();
           } catch (e) {
             const msg = (e as Error).message || "";
 
@@ -264,13 +282,7 @@ export async function POST(request: NextRequest) {
               aiError = "Invalid API key";
               llmAborted = true;
             } else {
-              // Transient error — retry once
-              console.warn(`LLM failed, retrying:`, msg);
-              try {
-                classifications = await classifyWithLLM(client, model, summaries, bucketDefs, ruleHints, ruleReasons);
-              } catch {
-                failed += needsLLM.length;
-              }
+              failed += needsLLM.length;
             }
           }
 
