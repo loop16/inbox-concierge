@@ -51,9 +51,9 @@ export async function classifyWithLLM(
   const trimmed = threads.map((t) => {
     const entry: Record<string, string | boolean> = {
       id: t.id,
-      subject: t.subject.slice(0, 80),
+      subject: t.subject.slice(0, 120),
       from: t.senderEmail,
-      preview: t.snippet.slice(0, 100),
+      preview: t.snippet,
     };
     if (t.hasUnsubscribe) entry.unsub = true;
     const hint = ruleHints?.get(t.id);
